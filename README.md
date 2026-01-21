@@ -148,12 +148,7 @@ github-issue-analyzer/
 
 The LLM prompt is crafted with several key techniques:
 
-### 1. Role Definition
-```
-"You are an expert engineering assistant..."
-```
-
-### 2. Strict Output Requirements
+### 1. Strict Output Requirements
 - Enforces `X/5 - Justification` format for priority scores
 - Limits labels to standard kebab-case (e.g., `bug`, `enhancement`)
 - Uses Gemini's **Structured Output** mode for guaranteed JSON schema
