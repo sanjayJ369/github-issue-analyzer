@@ -7,6 +7,7 @@ A powerful AI-powered tool that transforms messy GitHub issues into structured e
 ## ✨ Features
 
 - **Structured Analysis**: Summary, classification, priority scoring, and label suggestions
+- **Multi-Provider LLM**: Support for multiple API keys with automatic or manual selection
 - **Modern UI**: React-based SPA with dark/light theme, responsive design
 - **Agentic UX**: Real-time status feed showing analysis pipeline progress
 - **Extra Mile Features**:
@@ -14,6 +15,7 @@ A powerful AI-powered tool that transforms messy GitHub issues into structured e
   - ⚠️ Closed issue warnings
   - 💾 15-minute TTL caching for fast repeat queries
   - 🔄 Intelligent error handling with retry options
+  - 🔀 Provider selection with localStorage persistence
 
 ---
 
