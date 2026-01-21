@@ -3,12 +3,20 @@ LLM Router
 
 Routes analysis requests to the correct LLM provider based on provider_id.
 Handles auto-selection when only one provider is available.
+
+Supported providers:
+- gemini: Google Gemini API
+- openai: OpenAI API
+- anthropic: Anthropic Claude API
+- huggingface: Hugging Face Inference API
 """
 
 from typing import Optional
 from .providers import get_available_providers, get_provider_by_id, get_default_provider, LLMProvider
 from .clients.gemini import run_gemini
 from .clients.openai import run_openai
+from .clients.anthropic import run_anthropic
+from .clients.huggingface import run_huggingface
 from ..schemas import IssueAnalysis
 import logging
 
@@ -45,7 +53,8 @@ async def analyze_with_provider(
     # No providers configured
     if not providers:
         raise ProviderSelectionError(
-            "No LLM providers configured. Please set GEMINI_API_KEY or OPENAI_API_KEY in environment."
+            "No LLM providers configured. Please set an API key (GEMINI_API_KEY, OPENAI_API_KEY, "
+            "ANTHROPIC_API_KEY, or HF_API_KEY) in your environment."
         )
     
     # Determine which provider to use
@@ -81,6 +90,20 @@ async def analyze_with_provider(
         )
     elif provider.provider == "openai":
         return await run_openai(
+            context=context,
+            api_key=provider.api_key,
+            model_name=provider.model,
+            allowed_labels=allowed_labels
+        )
+    elif provider.provider == "anthropic":
+        return await run_anthropic(
+            context=context,
+            api_key=provider.api_key,
+            model_name=provider.model,
+            allowed_labels=allowed_labels
+        )
+    elif provider.provider == "huggingface":
+        return await run_huggingface(
             context=context,
             api_key=provider.api_key,
             model_name=provider.model,

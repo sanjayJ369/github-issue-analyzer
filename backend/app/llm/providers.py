@@ -4,11 +4,11 @@ LLM Provider Registry
 Scans environment variables to detect configured LLM API keys and builds
 a list of available providers. Supports multiple keys per provider.
 
-Key naming convention:
-- GEMINI_API_KEY -> gemini_1
-- GEMINI_API_KEY_2 -> gemini_2
-- OPENAI_API_KEY -> openai_1
-- OPENAI_API_KEY_2 -> openai_2
+Supported providers:
+- Gemini: GEMINI_API_KEY, GEMINI_API_KEY_2, ...
+- OpenAI: OPENAI_API_KEY, OPENAI_API_KEY_2, ...
+- Anthropic/Claude: ANTHROPIC_API_KEY, CLAUDE_API_KEY, ...
+- Hugging Face: HF_API_KEY, HUGGINGFACE_API_KEY, HF_TOKEN, ...
 """
 
 import os
@@ -25,7 +25,7 @@ class LLMProvider:
     """Represents a configured LLM provider."""
     id: str              # Stable ID like "gemini_1", "openai_2"
     label: str           # Human-readable label like "Gemini (primary)"
-    provider: str        # Provider type: "gemini", "openai"
+    provider: str        # Provider type: "gemini", "openai", "anthropic", "huggingface"
     model: str           # Model name
     api_key: str         # The actual API key (kept server-side)
     is_available: bool   # Whether the key is valid/set
@@ -44,52 +44,112 @@ class LLMProviderInfo:
 # Default models for each provider
 DEFAULT_MODELS = {
     "gemini": os.getenv("MODEL_NAME", "gemini-2.0-flash"),
-    "openai": "gpt-4o-mini",
+    "openai": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+    "anthropic": os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
+    "huggingface": os.getenv("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.2"),
 }
 
 
-def _scan_env_for_keys(prefix: str) -> List[tuple]:
+# Placeholder patterns to filter out (case-insensitive)
+PLACEHOLDER_PATTERNS = [
+    r"^your_.*_here$",
+    r"^sk-your.*$",
+    r"^your-.*-key.*$",
+    r"^placeholder.*$",
+    r"^xxx+$",
+    r"^test.*key.*$",
+]
+
+
+def _is_placeholder(value: str) -> bool:
+    """Check if a value looks like a placeholder API key."""
+    if not value:
+        return True
+    value_lower = value.lower().strip()
+    if len(value_lower) < 10:  # API keys are usually longer
+        return True
+    for pattern in PLACEHOLDER_PATTERNS:
+        if re.match(pattern, value_lower):
+            return True
+    return False
+
+
+def _scan_env_for_keys(prefixes: List[str]) -> List[tuple]:
     """
-    Scan environment variables for API keys matching pattern.
+    Scan environment variables for API keys matching patterns.
     Returns list of (suffix_number, api_key) tuples.
+    
+    Supports multiple prefix patterns for backwards compatibility.
     
     Examples:
         GEMINI_API_KEY -> (1, "key_value")
         GEMINI_API_KEY_2 -> (2, "key_value")
+        HF_API_KEY -> (1, "key_value")
+        HF_TOKEN -> (1, "key_value")
     """
     results = []
-    pattern = re.compile(rf"^{prefix}_API_KEY(_(\d+))?$")
+    seen_nums = set()
     
-    for key, value in os.environ.items():
-        match = pattern.match(key)
-        if match and value:
-            suffix = match.group(2)
-            num = int(suffix) if suffix else 1
-            results.append((num, value))
+    for prefix in prefixes:
+        # Pattern for PREFIX_API_KEY or PREFIX_API_KEY_N
+        api_key_pattern = re.compile(rf"^{prefix}_API_KEY(_(\\d+))?$", re.IGNORECASE)
+        # Pattern for PREFIX_TOKEN (common for HF)
+        token_pattern = re.compile(rf"^{prefix}_TOKEN$", re.IGNORECASE)
+        
+        for key, value in os.environ.items():
+            if _is_placeholder(value):
+                continue
+                
+            # Check API_KEY pattern
+            match = api_key_pattern.match(key)
+            if match and value:
+                suffix = match.group(2)
+                num = int(suffix) if suffix else 1
+                if num not in seen_nums:
+                    results.append((num, value))
+                    seen_nums.add(num)
+                continue
+            
+            # Check TOKEN pattern
+            if token_pattern.match(key) and value:
+                num = 1
+                if num not in seen_nums:
+                    results.append((num, value))
+                    seen_nums.add(num)
     
     return sorted(results, key=lambda x: x[0])
 
 
 def _get_label(provider: str, index: int, total: int) -> str:
     """Generate human-readable label for provider."""
+    display_names = {
+        "gemini": "Gemini",
+        "openai": "OpenAI",
+        "anthropic": "Claude",
+        "huggingface": "Hugging Face",
+    }
+    name = display_names.get(provider, provider.capitalize())
+    
     if total == 1:
-        return f"{provider.capitalize()}"
+        return name
     else:
         if index == 1:
-            return f"{provider.capitalize()} (primary)"
+            return f"{name} (primary)"
         else:
-            return f"{provider.capitalize()} (key {index})"
+            return f"{name} (key {index})"
 
 
 def get_available_providers() -> List[LLMProvider]:
     """
     Detect all configured LLM providers from environment variables.
     Returns list of LLMProvider objects.
+    
+    Only returns providers with valid (non-placeholder) API keys.
     """
     providers = []
     
     # Scan for Gemini keys
-    gemini_keys = _scan_env_for_keys("GEMINI")
+    gemini_keys = _scan_env_for_keys(["GEMINI"])
     for num, api_key in gemini_keys:
         providers.append(LLMProvider(
             id=f"gemini_{num}",
@@ -100,14 +160,38 @@ def get_available_providers() -> List[LLMProvider]:
             is_available=True
         ))
     
-    # Scan for OpenAI keys (future support)
-    openai_keys = _scan_env_for_keys("OPENAI")
+    # Scan for OpenAI keys
+    openai_keys = _scan_env_for_keys(["OPENAI"])
     for num, api_key in openai_keys:
         providers.append(LLMProvider(
             id=f"openai_{num}",
             label=_get_label("openai", num, len(openai_keys)),
             provider="openai",
             model=DEFAULT_MODELS["openai"],
+            api_key=api_key,
+            is_available=True
+        ))
+    
+    # Scan for Anthropic/Claude keys
+    anthropic_keys = _scan_env_for_keys(["ANTHROPIC", "CLAUDE"])
+    for num, api_key in anthropic_keys:
+        providers.append(LLMProvider(
+            id=f"anthropic_{num}",
+            label=_get_label("anthropic", num, len(anthropic_keys)),
+            provider="anthropic",
+            model=DEFAULT_MODELS["anthropic"],
+            api_key=api_key,
+            is_available=True
+        ))
+    
+    # Scan for Hugging Face keys
+    hf_keys = _scan_env_for_keys(["HF", "HUGGINGFACE"])
+    for num, api_key in hf_keys:
+        providers.append(LLMProvider(
+            id=f"huggingface_{num}",
+            label=_get_label("huggingface", num, len(hf_keys)),
+            provider="huggingface",
+            model=DEFAULT_MODELS["huggingface"],
             api_key=api_key,
             is_available=True
         ))
