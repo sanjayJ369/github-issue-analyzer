@@ -4,13 +4,22 @@ from .config import Config
 
 class LLMClient:
     def __init__(self):
-        genai.configure(api_key=Config.GEMINI_API_KEY)
-        self.model = genai.GenerativeModel(Config.MODEL_NAME)
+        self.model = None
+        if Config.GEMINI_API_KEY:
+            try:
+                genai.configure(api_key=Config.GEMINI_API_KEY)
+                self.model = genai.GenerativeModel(Config.MODEL_NAME)
+            except Exception as e:
+                print(f"Failed to initialize Gemini: {e}")
+        else:
+            print("Warning: GEMINI_API_KEY not found. Analysis will fail.")
 
     async def analyze_issue(self, context: str, allowed_labels: list[str] = None) -> IssueAnalysis:
         """
         Analyzes the issue context using Gemini Structured Outputs.
         """
+        if not self.model:
+            raise RuntimeError("Gemini API Key is missing or invalid. Please configure GEMINI_API_KEY in environment variables.")
         
         system_prompt = (
             "You are an expert engineering assistant. Analyze the GitHub issue provided below. "

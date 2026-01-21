@@ -4,6 +4,8 @@ from cachetools import TTLCache
 import asyncio
 import logging
 
+import os
+
 # App modules
 from .schemas import AnalyzeRequest, AnalyzeResponse, AnalyzeResponseMeta
 from .github_client import GitHubClient
@@ -15,7 +17,10 @@ from .config import Config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="GitHub Issue Analyzer API", version="1.0.0")
+# Determine root path for Vercel deployment
+root_path = "/api" if os.getenv("VERCEL") else ""
+
+app = FastAPI(title="GitHub Issue Analyzer API", version="1.0.0", root_path=root_path)
 
 # CORS setup
 app.add_middleware(
