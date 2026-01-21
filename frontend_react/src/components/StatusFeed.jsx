@@ -27,7 +27,7 @@ const StatusFeed = ({ error, onRetry }) => {
     }, [error]);
 
     return (
-        <Card className="p-6 border-dashed border-border/60 bg-card/30 backdrop-blur-sm min-h-[400px] flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-300">
+        <Card className="p-6 border-dashed border-border/60 bg-card/80 backdrop-blur-sm min-h-[400px] flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-300">
              <div className="space-y-6 w-full max-w-md">
                 <div className="flex items-center gap-3 justify-center mb-8">
                     <div className="relative">

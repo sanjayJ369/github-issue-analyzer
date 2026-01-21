@@ -1,6 +1,5 @@
-import React from 'react';
 import { Button } from "./ui/button";
-import { Github, Moon, Sun } from "lucide-react";
+import { Github, Moon, Sun, Bot, Sparkles } from "lucide-react";
 import { useTheme } from "./theme-provider";
 
 const Navbar = () => {
@@ -9,13 +8,15 @@ const Navbar = () => {
     return (
         <nav className="border-b border-border bg-card/50 backdrop-blur-xl sticky top-0 z-50">
             <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <img 
-                        src="https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png" 
-                        alt="GitHub Logo" 
-                        className="w-8 h-8 invert dark:invert-0 transition-all" 
-                    />
-                    <span className="font-bold text-lg tracking-tight">GitHub Issue Analyzer</span>
+                <div className="flex items-center gap-3 group">
+                    <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                        <Bot className="w-6 h-6 text-primary transition-transform group-hover:scale-110" />
+                        <Sparkles className="w-3 h-3 text-yellow-500 absolute -top-1 -right-1 animate-pulse" />
+                    </div>
+                    <div>
+                        <span className="font-bold text-lg tracking-tight block leading-none">IssueInsight</span>
+                        <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-medium">Agentic Analyzer</span>
+                    </div>
                 </div>
                 
                 <div className="flex items-center gap-2">

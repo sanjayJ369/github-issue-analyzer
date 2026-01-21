@@ -1,4 +1,4 @@
-const BACKEND_URL = "http://localhost:8000";
+const BACKEND_URL = import.meta.env.PROD ? "/api" : "http://localhost:8000";
 
 export const analyzeIssue = async (repoUrl, issueNumber) => {
   try {
@@ -13,12 +13,21 @@ export const analyzeIssue = async (repoUrl, issueNumber) => {
       }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.detail || "Analysis failed");
+    const text = await response.text();
+    let data;
+    
+    try {
+        data = JSON.parse(text);
+    } catch (e) {
+        console.error("Failed to parse JSON response:", text);
+        throw new Error(`Server Error: ${text.substring(0, 50)}... (Check Vercel Logs)`);
     }
 
-    return await response.json();
+    if (!response.ok) {
+      throw new Error(data.detail || "Analysis failed");
+    }
+
+    return data;
   } catch (error) {
     console.error("API Error:", error);
     throw error;

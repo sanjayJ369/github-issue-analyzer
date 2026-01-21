@@ -14,7 +14,7 @@ const AnalysisForm = ({ onAnalyze, isLoading }) => {
     };
 
     return (
-        <Card className="border-border/50 shadow-xl shadow-black/20">
+        <Card className="border-border/50 shadow-xl shadow-black/5 dark:shadow-black/20 bg-card/80 backdrop-blur-sm">
             <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                     <Github className="w-5 h-5 text-primary" />

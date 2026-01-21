@@ -39,17 +39,20 @@ function App() {
         
         <main className="flex-1 container mx-auto px-4 py-8 md:py-12">
           <div className="text-center mb-12 space-y-4">
-               <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
-                  GitHub Issue Analyzer
+               <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+                  IssueInsight
                </h1>
+               <p className="text-xl font-semibold text-foreground/80">
+                  Agentic GitHub Issue Analyzer
+               </p>
                <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
                   Transform messy issues into structured engineering insights instantly.
                </p>
           </div>
 
-          <div className="grid lg:grid-cols-12 gap-8 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                {/* Left Column: Input */}
-               <div className="lg:col-span-4 xl:col-span-4 sticky top-24">
+               <div className="lg:col-span-4 xl:col-span-4 lg:sticky lg:top-24 space-y-6">
                   <AnalysisForm onAnalyze={handleAnalyze} isLoading={loading} />
                </div>
 
@@ -58,11 +61,11 @@ function App() {
                <div className="lg:col-span-8 xl:col-span-8 min-h-[500px]">
                   
                   {analysisResult?.meta?.warning && (
-                      <div className="p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-600 dark:text-yellow-400 mb-6 flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-2">
+                      <div className="p-4 rounded-lg bg-amber-50 dark:bg-yellow-500/10 border border-amber-200 dark:border-yellow-500/30 text-amber-800 dark:text-yellow-400 mb-6 flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-2">
                           <span className="text-xl">⚠️</span>
                           <div>
                               <p className="font-bold text-sm uppercase tracking-wide opacity-90">Warning</p>
-                              <p className="text-sm">{analysisResult.meta.warning}</p>
+                              <p className="text-sm font-medium">{analysisResult.meta.warning}</p>
                           </div>
                       </div>
                   )}
