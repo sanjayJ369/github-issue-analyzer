@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch, AsyncMock
 import pytest
-from app.main import app, gh_client, llm_client, analysis_cache
+from app.main import app, gh_client, analysis_cache
 from app.schemas import IssueAnalysis
 
 client = TestClient(app)
@@ -16,15 +16,31 @@ def test_health_check():
     assert response.json() == {"status": "ok"}
 
 
+# ============ Provider Endpoint Tests ============
+
+def test_list_providers():
+    """Test that /llm/providers returns list of providers."""
+    response = client.get("/llm/providers")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    # Should have at least one provider if GEMINI_API_KEY is set
+    if len(data) > 0:
+        assert "id" in data[0]
+        assert "label" in data[0]
+        assert "provider" in data[0]
+        assert "model" in data[0]
+
+
 # ============ Analyze Endpoint - Success Cases ============
 
-def test_analyze_issue_success():
+@patch("app.main.analyze_with_provider")
+def test_analyze_issue_success(mock_analyze):
     """Test successful analysis of an open issue."""
     original_fetch_issue = gh_client.fetch_issue
     original_fetch_comments = gh_client.fetch_comments
     original_fetch_labels = gh_client.fetch_labels
-    original_analyze = llm_client.analyze_issue
-    analysis_cache.clear()  # Clear cache for clean test
+    analysis_cache.clear()
 
     try:
         gh_client.fetch_issue = AsyncMock(return_value={
@@ -35,18 +51,19 @@ def test_analyze_issue_success():
         })
         gh_client.fetch_comments = AsyncMock(return_value=[])
         gh_client.fetch_labels = AsyncMock(return_value=["bug", "enhancement"])
-        llm_client.analyze_issue = AsyncMock(return_value=IssueAnalysis(
+        
+        mock_analyze.return_value = IssueAnalysis(
             summary="Short summary",
             type="bug",
             priority_score="4/5 - High priority bug",
             suggested_labels=["bug"],
             potential_impact="Could affect users"
-        ))
+        )
 
-        payload = {"repo_url": "https://github.com/test/repo", "issue_number": 1}
+        payload = {"repo_url": "https://github.com/test/repo", "issue_number": 1, "provider_id": "gemini_1"}
         response = client.post("/analyze", json=payload)
 
-        assert response.status_code == 200
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.json()}"
         data = response.json()
         assert data["analysis"]["summary"] == "Short summary"
         assert data["analysis"]["type"] == "bug"
@@ -58,35 +75,42 @@ def test_analyze_issue_success():
         gh_client.fetch_issue = original_fetch_issue
         gh_client.fetch_comments = original_fetch_comments
         gh_client.fetch_labels = original_fetch_labels
-        llm_client.analyze_issue = original_analyze
 
 
-def test_analyze_closed_issue_returns_warning():
+@patch("app.main.analyze_with_provider")
+@patch("app.main.get_available_providers")
+def test_analyze_closed_issue_returns_warning(mock_providers, mock_analyze):
     """Test that analyzing a closed issue includes a warning in the response."""
     original_fetch_issue = gh_client.fetch_issue
     original_fetch_comments = gh_client.fetch_comments
     original_fetch_labels = gh_client.fetch_labels
-    original_analyze = llm_client.analyze_issue
     analysis_cache.clear()
+    
+    from app.llm.providers import LLMProvider
+    mock_providers.return_value = [
+        LLMProvider(id="gemini_1", label="Gemini", provider="gemini", 
+                    model="gemini-2.0-flash", api_key="test_key", is_available=True)
+    ]
 
     try:
         gh_client.fetch_issue = AsyncMock(return_value={
             "title": "Closed Issue",
             "body": "This issue was resolved.",
-            "state": "closed",  # Closed state
+            "state": "closed",
             "html_url": "https://github.com/test/repo/issues/2"
         })
         gh_client.fetch_comments = AsyncMock(return_value=[])
         gh_client.fetch_labels = AsyncMock(return_value=[])
-        llm_client.analyze_issue = AsyncMock(return_value=IssueAnalysis(
+        
+        mock_analyze.return_value = IssueAnalysis(
             summary="Summary of closed issue",
             type="bug",
             priority_score="2/5 - Low priority",
             suggested_labels=["resolved"],
             potential_impact="None"
-        ))
+        )
 
-        payload = {"repo_url": "https://github.com/test/repo", "issue_number": 2}
+        payload = {"repo_url": "https://github.com/test/repo", "issue_number": 2, "provider_id": "gemini_1"}
         response = client.post("/analyze", json=payload)
 
         assert response.status_code == 200
@@ -97,7 +121,6 @@ def test_analyze_closed_issue_returns_warning():
         gh_client.fetch_issue = original_fetch_issue
         gh_client.fetch_comments = original_fetch_comments
         gh_client.fetch_labels = original_fetch_labels
-        llm_client.analyze_issue = original_analyze
 
 
 # ============ Analyze Endpoint - Error Cases ============
@@ -154,7 +177,7 @@ def test_analyze_missing_repo_url():
     payload = {"issue_number": 1}
     response = client.post("/analyze", json=payload)
 
-    assert response.status_code == 422  # Pydantic validation error
+    assert response.status_code == 422
 
 
 def test_analyze_missing_issue_number():
@@ -162,7 +185,7 @@ def test_analyze_missing_issue_number():
     payload = {"repo_url": "https://github.com/test/repo"}
     response = client.post("/analyze", json=payload)
 
-    assert response.status_code == 422  # Pydantic validation error
+    assert response.status_code == 422
 
 
 def test_analyze_invalid_issue_number_type():
@@ -175,13 +198,20 @@ def test_analyze_invalid_issue_number_type():
 
 # ============ Response Structure Tests ============
 
-def test_response_contains_required_fields():
+@patch("app.main.analyze_with_provider")
+@patch("app.main.get_available_providers")
+def test_response_contains_required_fields(mock_providers, mock_analyze):
     """Test that successful response contains all required fields."""
     original_fetch_issue = gh_client.fetch_issue
     original_fetch_comments = gh_client.fetch_comments
     original_fetch_labels = gh_client.fetch_labels
-    original_analyze = llm_client.analyze_issue
     analysis_cache.clear()
+    
+    from app.llm.providers import LLMProvider
+    mock_providers.return_value = [
+        LLMProvider(id="gemini_1", label="Gemini", provider="gemini", 
+                    model="gemini-2.0-flash", api_key="test_key", is_available=True)
+    ]
 
     try:
         gh_client.fetch_issue = AsyncMock(return_value={
@@ -189,12 +219,13 @@ def test_response_contains_required_fields():
         })
         gh_client.fetch_comments = AsyncMock(return_value=[{"body": "Comment", "user": {"login": "user1"}}])
         gh_client.fetch_labels = AsyncMock(return_value=["bug"])
-        llm_client.analyze_issue = AsyncMock(return_value=IssueAnalysis(
+        
+        mock_analyze.return_value = IssueAnalysis(
             summary="S", type="feature_request", priority_score="3/5 - Medium",
             suggested_labels=["enhancement"], potential_impact="Moderate"
-        ))
+        )
 
-        payload = {"repo_url": "https://github.com/t/r", "issue_number": 1}
+        payload = {"repo_url": "https://github.com/t/r", "issue_number": 1, "provider_id": "gemini_1"}
         response = client.post("/analyze", json=payload)
 
         assert response.status_code == 200
@@ -215,9 +246,9 @@ def test_response_contains_required_fields():
         assert data["meta"]["fetched_comments_count"] == 1
         assert "truncated" in data["meta"]
         assert "cached" in data["meta"]
+        assert "provider_id" in data["meta"]
         
     finally:
         gh_client.fetch_issue = original_fetch_issue
         gh_client.fetch_comments = original_fetch_comments
         gh_client.fetch_labels = original_fetch_labels
-        llm_client.analyze_issue = original_analyze

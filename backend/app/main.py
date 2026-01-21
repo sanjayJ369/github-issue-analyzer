@@ -3,13 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from cachetools import TTLCache
 import asyncio
 import logging
-
 import os
+from typing import List
 
 # App modules
-from .schemas import AnalyzeRequest, AnalyzeResponse, AnalyzeResponseMeta
+from .schemas import AnalyzeRequest, AnalyzeResponse, AnalyzeResponseMeta, LLMProviderResponse
 from .github_client import GitHubClient
-from .llm_client import LLMClient
+from .llm.router import analyze_with_provider, ProviderSelectionError
+from .llm.providers import get_provider_info_list, get_available_providers
 from .utils import parse_github_url, build_issue_context, truncate_text
 from .config import Config
 
@@ -25,7 +26,7 @@ app = FastAPI(title="GitHub Issue Analyzer API", version="1.0.0", root_path=root
 # CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allow all for local dev convenience
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -33,31 +34,57 @@ app.add_middleware(
 
 # Services
 gh_client = GitHubClient(token=Config.GITHUB_TOKEN)
-llm_client = LLMClient()
 
-# Caching: Key = (repo_url, issue_number), Value = AnalyzeResponse
+# Caching: Key = (repo_url, issue_number, provider_id), Value = AnalyzeResponse
 # TTL = 15 minutes (900 seconds)
 analysis_cache = TTLCache(maxsize=100, ttl=900)
 
+
+@app.get("/llm/providers", response_model=List[LLMProviderResponse])
+def list_providers():
+    """
+    List all available LLM providers.
+    
+    Returns list of configured providers with their IDs and models.
+    The frontend should:
+    - Show no dropdown if length == 1 (auto-select)
+    - Show dropdown if length > 1
+    - Show error if length == 0
+    """
+    providers = get_provider_info_list()
+    return [
+        LLMProviderResponse(
+            id=p.id,
+            label=p.label,
+            provider=p.provider,
+            model=p.model,
+            is_available=p.is_available
+        )
+        for p in providers
+    ]
+
+
 @app.post("/analyze", response_model=AnalyzeResponse)
 async def analyze_issue(request: AnalyzeRequest):
-    # 0. Check Cache
-    cache_key = (request.repo_url, request.issue_number)
+    """
+    Analyze a GitHub issue using the selected LLM provider.
+    
+    If provider_id is not specified:
+    - Auto-selects if exactly 1 provider is available
+    - Returns error if multiple providers require selection
+    """
+    # Determine effective provider_id for caching
+    providers = get_available_providers()
+    effective_provider_id = request.provider_id
+    
+    if not effective_provider_id and len(providers) == 1:
+        effective_provider_id = providers[0].id
+    
+    # 0. Check Cache (including provider_id in key)
+    cache_key = (request.repo_url, request.issue_number, effective_provider_id)
     if cache_key in analysis_cache:
         logger.info(f"Serving cached result for {cache_key}")
-        response = analysis_cache[cache_key]
-        # Return a copy to safely modify 'cached' meta flag without changing stored obj
-        # Pydantic .copy() or model_dump + rebuild
-        # Simplest: Just setting cached=True on the return object (if model was mutable)
-        # But for correctness, let's reconstruct or use the cached model directly; 
-        # API consumer handles 'cached' flag if we want to bubble it up dynamicallly.
-        # Ideally we'd store the model, and we can just return it. 
-        # To strictly set meta.cached=True for *this* response, we'd need to clone it.
-        # For simplicity, we just return the cached object. The client won't know it's cached 
-        # unless we explicitly update the meta field on a copy.
-        
-        # Let's clone to updating cached bit
-        cached_resp = response.model_copy(deep=True)
+        cached_resp = analysis_cache[cache_key].model_copy(deep=True)
         cached_resp.meta.cached = True
         return cached_resp
 
@@ -68,7 +95,6 @@ async def analyze_issue(request: AnalyzeRequest):
 
     try:
         # 2. Fetch Data (Parallel fetch for speed)
-        # Using gather to fetch issue, comments, and labels concurrently
         issue_task = gh_client.fetch_issue(owner, repo, request.issue_number)
         comments_task = gh_client.fetch_comments(owner, repo, request.issue_number)
         labels_task = gh_client.fetch_labels(owner, repo)
@@ -79,7 +105,7 @@ async def analyze_issue(request: AnalyzeRequest):
         
         # Check for critical errors (issue_data is required)
         if isinstance(issue_data, Exception):
-            raise issue_data # Re-raise to be caught by except block
+            raise issue_data
         
         # Comments and labels can fail gracefully
         if isinstance(comments_data, Exception):
@@ -94,8 +120,12 @@ async def analyze_issue(request: AnalyzeRequest):
         full_text = build_issue_context(issue_data, comments_data)
         truncated_text, is_truncated = truncate_text(full_text)
         
-        # 4. Analyze with LLM
-        analysis = await llm_client.analyze_issue(truncated_text, allowed_labels=repo_labels)
+        # 4. Analyze with LLM (using router)
+        analysis = await analyze_with_provider(
+            provider_id=request.provider_id,
+            context=truncated_text,
+            allowed_labels=repo_labels
+        )
         
         # Check for warnings (e.g. closed issue)
         warning_msg = None
@@ -110,7 +140,8 @@ async def analyze_issue(request: AnalyzeRequest):
                 fetched_comments_count=len(comments_data),
                 truncated=is_truncated,
                 cached=False,
-                warning=warning_msg
+                warning=warning_msg,
+                provider_id=effective_provider_id
             )
         )
         
@@ -119,15 +150,16 @@ async def analyze_issue(request: AnalyzeRequest):
         
         return response
 
+    except ProviderSelectionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except ValueError as e:
-        # 404 or similar
         raise HTTPException(status_code=404, detail=str(e))
     except RuntimeError as e:
-        # Rate limits
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         logger.error(f"Analysis failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal processing error")
+
 
 @app.get("/health")
 def health_check():

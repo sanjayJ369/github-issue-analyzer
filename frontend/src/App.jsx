@@ -15,7 +15,7 @@ function App() {
   const [repoUrl, setRepoUrl] = useState("");
   const [issueNumber, setIssueNumber] = useState(null);
 
-  const handleAnalyze = async (url, num) => {
+  const handleAnalyze = async (url, num, providerId = null) => {
     setLoading(true);
     setError(null);
     setAnalysisResult(null);
@@ -23,7 +23,7 @@ function App() {
     setIssueNumber(num);
 
     try {
-      const data = await analyzeIssue(url, num);
+      const data = await analyzeIssue(url, num, providerId);
       setAnalysisResult(data);
     } catch (err) {
       setError(err.message || "An unexpected error occurred. Please check the URL and ID.");

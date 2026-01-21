@@ -4,6 +4,10 @@ from typing import Literal, List, Optional
 class AnalyzeRequest(BaseModel):
     repo_url: str
     issue_number: int
+    provider_id: Optional[str] = Field(
+        default=None,
+        description="LLM provider ID. Required if multiple providers configured. Auto-selects if only one available."
+    )
 
 class IssueAnalysis(BaseModel):
     summary: str = Field(description="A concise summary of the issue and its current status.")
@@ -24,7 +28,16 @@ class AnalyzeResponseMeta(BaseModel):
     truncated: bool
     cached: bool = False
     warning: Optional[str] = None
+    provider_id: Optional[str] = Field(default=None, description="The LLM provider used for analysis.")
 
 class AnalyzeResponse(BaseModel):
     analysis: IssueAnalysis
     meta: AnalyzeResponseMeta
+
+class LLMProviderResponse(BaseModel):
+    """Response schema for /llm/providers endpoint."""
+    id: str
+    label: str
+    provider: str
+    model: str
+    is_available: bool
