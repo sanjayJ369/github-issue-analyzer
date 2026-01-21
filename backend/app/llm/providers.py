@@ -48,8 +48,9 @@ DEFAULT_MODELS = {
     "anthropic": os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
     # Note: HF model must be available on Serverless Inference API
     # See: https://huggingface.co/docs/api-inference/supported-models
-    "huggingface": os.getenv("HF_MODEL", "mistralai/Mistral-Nemo-Instruct-2407"),
+    "huggingface": os.getenv("HF_MODEL", "google/gemma-2-2b-it"),
 }
+
 
 
 
