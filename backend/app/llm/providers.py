@@ -46,8 +46,11 @@ DEFAULT_MODELS = {
     "gemini": os.getenv("MODEL_NAME", "gemini-2.0-flash"),
     "openai": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
     "anthropic": os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
-    "huggingface": os.getenv("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.2"),
+    # Note: HF model must be available on Serverless Inference API
+    # See: https://huggingface.co/docs/api-inference/supported-models
+    "huggingface": os.getenv("HF_MODEL", "mistralai/Mistral-Nemo-Instruct-2407"),
 }
+
 
 
 # Placeholder patterns to filter out (case-insensitive)

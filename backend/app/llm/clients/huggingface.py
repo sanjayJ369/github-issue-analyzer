@@ -112,8 +112,23 @@ async def run_huggingface(
             )
             
     except httpx.HTTPStatusError as e:
-        logger.error(f"HuggingFace API error: {e.response.status_code} - {e.response.text}")
-        raise RuntimeError(f"HuggingFace API error: {e.response.status_code}")
+        error_text = e.response.text
+        status = e.response.status_code
+        logger.error(f"HuggingFace API error: {status} - {error_text}")
+        
+        if status == 410:
+            raise RuntimeError(
+                f"HuggingFace model '{model_name}' is no longer available. "
+                "Set HF_MODEL env var to a supported model from: "
+                "https://huggingface.co/docs/api-inference/supported-models"
+            )
+        elif status == 503:
+            raise RuntimeError(
+                f"HuggingFace model '{model_name}' is loading. Please retry in a few seconds."
+            )
+        else:
+            raise RuntimeError(f"HuggingFace API error: {status}")
+
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse HuggingFace response as JSON: {e}")
         raise RuntimeError("Failed to parse LLM response")
