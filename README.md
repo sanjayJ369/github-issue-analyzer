@@ -70,7 +70,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 
 # 4. Start Frontend (Terminal 2)
-cd frontend_react
+cd frontend
 npm install
 npm run dev
 ```
@@ -96,7 +96,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 
 # 4. Start Frontend (Terminal 2 - PowerShell)
-cd frontend_react
+cd frontend
 npm install
 npm run dev
 ```
@@ -130,7 +130,7 @@ github-issue-analyzer/
 │   │   ├── test_main.py      # Endpoint tests (10 tests)
 │   │   └── test_utils.py     # Utility tests (14 tests)
 │   └── requirements.txt
-├── frontend_react/
+├── frontend/
 │   ├── src/
 │   │   ├── components/       # React components
 │   │   ├── api.js            # API client
