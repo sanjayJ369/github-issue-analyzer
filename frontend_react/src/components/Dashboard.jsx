@@ -29,32 +29,32 @@ const Dashboard = ({ analysis, meta, repoUrl, issueNumber }) => {
                 )}
             </div>
 
-            <div className="grid md:grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
                 
                 {/* Left Column: Human-Readable Insights */}
-                <div className="space-y-6">
+                <div className="space-y-4 lg:space-y-6">
                     <section>
-                         <h3 className="text-sm font-bold mb-4 uppercase tracking-wider text-muted-foreground">
+                         <h3 className="text-sm font-bold mb-3 lg:mb-4 uppercase tracking-wider text-muted-foreground">
                             Classification
                         </h3>
                         <ClassificationCard type={analysis.type} priorityScore={analysis.priority_score} />
                     </section>
 
                     <section>
-                        <div className="flex items-center justify-between mb-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 lg:mb-4">
                             <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
                                 Executive Summary
                             </h3>
                             <Labels labels={analysis.suggested_labels} />
                         </div>
-                        <div className="space-y-6">
+                        <div className="space-y-4 lg:space-y-6">
                             <SummaryCard summary={analysis.summary} />
                             <ImpactCard impact={analysis.potential_impact} />
                         </div>
                      </section>
                      
                      <section className="pt-4 border-t border-border/40">
-                        <div className="flex justify-between items-center bg-card border border-border/50 p-4 rounded-lg">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-card border border-border/50 p-3 lg:p-4 rounded-lg">
                             <div>
                                 <h4 className="font-semibold text-sm">Original Source</h4>
                                 <p className="text-xs text-muted-foreground mt-1">View the full discussion on GitHub</p>
@@ -63,7 +63,7 @@ const Dashboard = ({ analysis, meta, repoUrl, issueNumber }) => {
                                 href={`${repoUrl}/issues/${issueNumber}`} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2 gap-2"
+                                className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2 gap-2 w-full sm:w-auto"
                             >
                                 <ExternalLink className="w-4 h-4" />
                                 Open
@@ -74,9 +74,9 @@ const Dashboard = ({ analysis, meta, repoUrl, issueNumber }) => {
 
                 {/* Right Column: Engineering Data (Sticky) */}
                 <div className="space-y-6 lg:sticky lg:top-24">
-                     <section className="h-[calc(100vh-12rem)] min-h-[600px]">
-                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-xl font-bold flex items-center gap-2">
+                     <section className="h-[400px] lg:h-[calc(100vh-12rem)] lg:min-h-[600px]">
+                         <div className="flex items-center justify-between mb-3 lg:mb-4">
+                            <h3 className="text-lg lg:text-xl font-bold flex items-center gap-2">
                                 Analysis Payload
                             </h3>
                          </div>

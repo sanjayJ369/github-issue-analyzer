@@ -38,14 +38,14 @@ function App() {
         <Navbar />
         
         <main className="flex-1 container mx-auto px-4 py-8 md:py-12">
-          <div className="text-center mb-12 space-y-4">
-               <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+          <div className="text-center mb-8 md:mb-12 space-y-3 md:space-y-4 px-2">
+               <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
                   IssueInsight
                </h1>
-               <p className="text-xl font-semibold text-foreground/80">
+               <p className="text-lg sm:text-xl font-semibold text-foreground/80">
                   Agentic GitHub Issue Analyzer
                </p>
-               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+               <p className="text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto">
                   Transform messy issues into structured engineering insights instantly.
                </p>
           </div>
