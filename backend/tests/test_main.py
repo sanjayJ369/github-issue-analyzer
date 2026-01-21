@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch, AsyncMock
 import pytest
 from app.main import app, gh_client, llm_client
+from app.schemas import IssueAnalysis
 
 client = TestClient(app)
 
@@ -10,8 +11,7 @@ def test_health_check():
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
-@pytest.mark.asyncio
-async def test_analyze_issue_success():
+def test_analyze_issue_success():
     # Manual mock override
     original_fetch_issue = gh_client.fetch_issue
     original_fetch_comments = gh_client.fetch_comments
@@ -27,13 +27,13 @@ async def test_analyze_issue_success():
         })
         gh_client.fetch_comments = AsyncMock(return_value=[])
         gh_client.fetch_labels = AsyncMock(return_value=["bug", "enhancement"])
-        llm_client.analyze_issue = AsyncMock(return_value={
-            "summary": "Short summary",
-            "priority_score": 8,
-            "impact_classification": "High",
-            "justification": "It is a bug",
-            "suggested_labels": ["bug"]
-        })
+        llm_client.analyze_issue = AsyncMock(return_value=IssueAnalysis(
+            summary="Short summary",
+            type="bug",
+            priority_score="4/5 - High priority bug",
+            suggested_labels=["bug"],
+            potential_impact="Could affect users"
+        ))
 
         payload = {"repo_url": "https://github.com/test/repo", "issue_number": 1}
         response = client.post("/analyze", json=payload)
@@ -50,8 +50,7 @@ async def test_analyze_issue_success():
         gh_client.fetch_labels = original_fetch_labels
         llm_client.analyze_issue = original_analyze
 
-@pytest.mark.asyncio
-async def test_analyze_issue_not_found():
+def test_analyze_issue_not_found():
     original_fetch_issue = gh_client.fetch_issue
     
     try:
