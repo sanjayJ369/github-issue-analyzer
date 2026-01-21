@@ -1,22 +1,30 @@
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch, AsyncMock
 import pytest
-from app.main import app, gh_client, llm_client
+from app.main import app, gh_client, llm_client, analysis_cache
 from app.schemas import IssueAnalysis
 
 client = TestClient(app)
 
+
+# ============ Health Check Tests ============
+
 def test_health_check():
+    """Test that the health endpoint returns OK status."""
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
+
+# ============ Analyze Endpoint - Success Cases ============
+
 def test_analyze_issue_success():
-    # Manual mock override
+    """Test successful analysis of an open issue."""
     original_fetch_issue = gh_client.fetch_issue
     original_fetch_comments = gh_client.fetch_comments
     original_fetch_labels = gh_client.fetch_labels
     original_analyze = llm_client.analyze_issue
+    analysis_cache.clear()  # Clear cache for clean test
 
     try:
         gh_client.fetch_issue = AsyncMock(return_value={
@@ -41,16 +49,61 @@ def test_analyze_issue_success():
         assert response.status_code == 200
         data = response.json()
         assert data["analysis"]["summary"] == "Short summary"
+        assert data["analysis"]["type"] == "bug"
         assert data["meta"]["issue_url"] == "https://github.com/test/repo"
+        assert data["meta"]["cached"] == False
+        assert data["meta"]["warning"] is None
         
     finally:
-        # Restore original methods
         gh_client.fetch_issue = original_fetch_issue
         gh_client.fetch_comments = original_fetch_comments
         gh_client.fetch_labels = original_fetch_labels
         llm_client.analyze_issue = original_analyze
 
+
+def test_analyze_closed_issue_returns_warning():
+    """Test that analyzing a closed issue includes a warning in the response."""
+    original_fetch_issue = gh_client.fetch_issue
+    original_fetch_comments = gh_client.fetch_comments
+    original_fetch_labels = gh_client.fetch_labels
+    original_analyze = llm_client.analyze_issue
+    analysis_cache.clear()
+
+    try:
+        gh_client.fetch_issue = AsyncMock(return_value={
+            "title": "Closed Issue",
+            "body": "This issue was resolved.",
+            "state": "closed",  # Closed state
+            "html_url": "https://github.com/test/repo/issues/2"
+        })
+        gh_client.fetch_comments = AsyncMock(return_value=[])
+        gh_client.fetch_labels = AsyncMock(return_value=[])
+        llm_client.analyze_issue = AsyncMock(return_value=IssueAnalysis(
+            summary="Summary of closed issue",
+            type="bug",
+            priority_score="2/5 - Low priority",
+            suggested_labels=["resolved"],
+            potential_impact="None"
+        ))
+
+        payload = {"repo_url": "https://github.com/test/repo", "issue_number": 2}
+        response = client.post("/analyze", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "closed" in data["meta"]["warning"].lower()
+        
+    finally:
+        gh_client.fetch_issue = original_fetch_issue
+        gh_client.fetch_comments = original_fetch_comments
+        gh_client.fetch_labels = original_fetch_labels
+        llm_client.analyze_issue = original_analyze
+
+
+# ============ Analyze Endpoint - Error Cases ============
+
 def test_analyze_issue_not_found():
+    """Test that 404 is returned when issue doesn't exist."""
     original_fetch_issue = gh_client.fetch_issue
     
     try:
@@ -66,3 +119,105 @@ def test_analyze_issue_not_found():
         
     finally:
         gh_client.fetch_issue = original_fetch_issue
+
+
+def test_analyze_rate_limit_exceeded():
+    """Test that 403 is returned when GitHub rate limit is hit."""
+    original_fetch_issue = gh_client.fetch_issue
+    
+    try:
+        mock_fetch = AsyncMock()
+        mock_fetch.side_effect = RuntimeError("GitHub API rate limit exceeded")
+        gh_client.fetch_issue = mock_fetch
+
+        payload = {"repo_url": "https://github.com/test/repo", "issue_number": 1}
+        response = client.post("/analyze", json=payload)
+
+        assert response.status_code == 403
+        assert "rate limit" in response.json()["detail"].lower()
+        
+    finally:
+        gh_client.fetch_issue = original_fetch_issue
+
+
+def test_analyze_invalid_github_url():
+    """Test that 400 is returned for invalid GitHub URLs."""
+    payload = {"repo_url": "https://gitlab.com/owner/repo", "issue_number": 1}
+    response = client.post("/analyze", json=payload)
+
+    assert response.status_code == 400
+    assert "Invalid GitHub URL" in response.json()["detail"]
+
+
+def test_analyze_missing_repo_url():
+    """Test that 422 is returned when repo_url is missing."""
+    payload = {"issue_number": 1}
+    response = client.post("/analyze", json=payload)
+
+    assert response.status_code == 422  # Pydantic validation error
+
+
+def test_analyze_missing_issue_number():
+    """Test that 422 is returned when issue_number is missing."""
+    payload = {"repo_url": "https://github.com/test/repo"}
+    response = client.post("/analyze", json=payload)
+
+    assert response.status_code == 422  # Pydantic validation error
+
+
+def test_analyze_invalid_issue_number_type():
+    """Test that 422 is returned when issue_number is not an integer."""
+    payload = {"repo_url": "https://github.com/test/repo", "issue_number": "abc"}
+    response = client.post("/analyze", json=payload)
+
+    assert response.status_code == 422
+
+
+# ============ Response Structure Tests ============
+
+def test_response_contains_required_fields():
+    """Test that successful response contains all required fields."""
+    original_fetch_issue = gh_client.fetch_issue
+    original_fetch_comments = gh_client.fetch_comments
+    original_fetch_labels = gh_client.fetch_labels
+    original_analyze = llm_client.analyze_issue
+    analysis_cache.clear()
+
+    try:
+        gh_client.fetch_issue = AsyncMock(return_value={
+            "title": "Test", "body": "Test", "state": "open", "html_url": "https://gh.com/t/r/1"
+        })
+        gh_client.fetch_comments = AsyncMock(return_value=[{"body": "Comment", "user": {"login": "user1"}}])
+        gh_client.fetch_labels = AsyncMock(return_value=["bug"])
+        llm_client.analyze_issue = AsyncMock(return_value=IssueAnalysis(
+            summary="S", type="feature_request", priority_score="3/5 - Medium",
+            suggested_labels=["enhancement"], potential_impact="Moderate"
+        ))
+
+        payload = {"repo_url": "https://github.com/t/r", "issue_number": 1}
+        response = client.post("/analyze", json=payload)
+
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Check analysis fields
+        assert "analysis" in data
+        assert "summary" in data["analysis"]
+        assert "type" in data["analysis"]
+        assert "priority_score" in data["analysis"]
+        assert "suggested_labels" in data["analysis"]
+        assert "potential_impact" in data["analysis"]
+        
+        # Check meta fields
+        assert "meta" in data
+        assert "issue_url" in data["meta"]
+        assert "fetched_comments_count" in data["meta"]
+        assert data["meta"]["fetched_comments_count"] == 1
+        assert "truncated" in data["meta"]
+        assert "cached" in data["meta"]
+        
+    finally:
+        gh_client.fetch_issue = original_fetch_issue
+        gh_client.fetch_comments = original_fetch_comments
+        gh_client.fetch_labels = original_fetch_labels
+        llm_client.analyze_issue = original_analyze
