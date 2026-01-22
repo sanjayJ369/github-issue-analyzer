@@ -147,10 +147,14 @@ async def verify_model(api_key: str, model_name: str) -> bool:
             }
             resp_ping = await client.post(url, headers=headers, json=payload_ping)
             
-            # Rate limit bypass
+            # Rate limit or payment required - don't mark as available
             if resp_ping.status_code == 429:
-                logger.info(f"HF {model_name} rate limited (Step A) - marking available")
-                return True
+                logger.warning(f"HF {model_name} rate limited (Step A) - marking as unavailable")
+                return False
+            
+            if resp_ping.status_code == 402:
+                logger.warning(f"HF {model_name} payment required (402) - marking as unavailable")
+                return False
                 
             if resp_ping.status_code != 200:
                 logger.debug(f"HF Step A (Ping) failed {model_name}: {resp_ping.status_code}")
@@ -174,9 +178,14 @@ async def verify_model(api_key: str, model_name: str) -> bool:
             
             resp_json = await client.post(url, headers=headers, json=payload_json)
             
+            # Rate limit or payment required - don't mark as available
             if resp_json.status_code == 429:
-                logger.info(f"HF {model_name} rate limited (Step B) - marking available")
-                return True
+                logger.warning(f"HF {model_name} rate limited (Step B) - marking as unavailable")
+                return False
+            
+            if resp_json.status_code == 402:
+                logger.warning(f"HF {model_name} payment required (402) - marking as unavailable")
+                return False
                 
             if resp_json.status_code != 200:
                 logger.debug(f"HF Step B (JSON) failed {model_name}: {resp_json.status_code}")
@@ -203,3 +212,4 @@ async def verify_model(api_key: str, model_name: str) -> bool:
     except Exception as e:
         logger.debug(f"HF model verification failed for {model_name}: {e}")
         return False
+

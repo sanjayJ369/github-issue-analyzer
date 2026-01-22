@@ -144,11 +144,11 @@ async def verify_model(api_key: str, model_name: str) -> bool:
         return True
             
     except Exception as e:
-        # If rate limited, the key is valid and model exists. Treat as available.
         err_str = str(e)
+        # Rate limited - return False, don't mark as available
         if "429" in err_str or "ResourceExhausted" in err_str or "QuotaExceeded" in err_str:
-            logger.info(f"Gemini {model_name} rate limited during verification (marking as available)")
-            return True
+            logger.warning(f"Gemini {model_name} rate limited during verification - marking as rate_limited")
+            return False  # Don't mark as available - it's rate limited
             
         logger.debug(f"Gemini model verification failed for {model_name}: {e}")
         return False
