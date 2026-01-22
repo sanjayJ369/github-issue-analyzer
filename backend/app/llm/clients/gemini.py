@@ -99,31 +99,21 @@ async def run_gemini(
 async def verify_model(api_key: str, model_name: str) -> bool:
     """
     Verify if a model is available and accessible with the given API key.
+    Uses a single lightweight request to minimize rate limit impact.
     
     Args:
         api_key: Gemini API key
         model_name: Model name to check
         
     Returns:
-        bool: True if model is accessible
+        bool: True if model is accessible, or tuple for rate-limited status
     """
     # Configure specifically for this check
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(model_name)
     
     try:
-        # Step A: Basic Ping
-        # "Reply with exactly: OK"
-        ping_resp = await model.generate_content_async(
-            "Reply with exactly: OK", 
-            generation_config=genai.GenerationConfig(max_output_tokens=5)
-        )
-        if not ping_resp.text or "OK" not in ping_resp.text:
-            logger.debug(f"Gemini Step A (Ping) failed for {model_name}: {ping_resp.text}")
-            return False
-
-        # Step B: Functional JSON Test
-        # "Return a JSON object with key hello and value world. Output ONLY JSON."
+        # Single verification request - JSON test (validates both connectivity and function)
         json_resp = await model.generate_content_async(
             "Return a JSON object with key hello and value world. Output ONLY JSON.",
             generation_config=genai.GenerationConfig(
@@ -135,10 +125,10 @@ async def verify_model(api_key: str, model_name: str) -> bool:
         try:
             data = json.loads(json_resp.text)
             if data.get("hello") != "world":
-                logger.debug(f"Gemini Step B (JSON) content mismatch for {model_name}: {data}")
+                logger.debug(f"Gemini JSON content mismatch for {model_name}: {data}")
                 return False
         except json.JSONDecodeError:
-            logger.debug(f"Gemini Step B (JSON) parse error for {model_name}: {json_resp.text}")
+            logger.debug(f"Gemini JSON parse error for {model_name}: {json_resp.text}")
             return False
             
         return True
