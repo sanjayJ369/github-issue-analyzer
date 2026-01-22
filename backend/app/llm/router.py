@@ -139,42 +139,57 @@ async def _execute_with_fallback(
     If the primary provider returns a 429/rate-limit error, tries the next
     available provider from the sorted list.
     """
-    # Get available providers for fallback (excluding already-tried ones)
-    available_for_fallback = [
-        p for p in all_providers 
-        if p.is_available and p.id != primary_provider.id
-    ]
+    from .providers import update_provider_status, AvailabilityStatus
     
-    attempts = 0
     current_provider = primary_provider
-    tried_providers = []
+    attempted_providers = {primary_provider.id}
     
-    while attempts <= max_fallback_attempts:
-        try:
-            return await _call_provider(current_provider, context, allowed_labels)
+    try:
+        return await _call_provider(current_provider, context, allowed_labels)
+        
+    except LLMRateLimitError as e:
+        # Mark current provider as rate limited in cache
+        logger.warning(f"Provider {current_provider.id} rate limited: {e}")
+        update_provider_status(
+            current_provider.id, 
+            AvailabilityStatus.RATE_LIMITED, 
+            "Rate limit exceeded during analysis"
+        )
+        
+        # Try fallbacks
+        remaining_providers = [
+            p for p in all_providers 
+            if p.id not in attempted_providers and p.status.value == 'available'
+        ]
+        
+        # Sort by speed/priority? They are already sorted by discover_providers
+        
+        for i in range(min(len(remaining_providers), max_fallback_attempts)):
+            fallback_provider = remaining_providers[i]
+            logger.info(f"Falling back to provider: {fallback_provider.id}")
+            attempted_providers.add(fallback_provider.id)
             
-        except LLMRateLimitError as e:
-            tried_providers.append(current_provider.id)
-            logger.warning(f"Rate limit hit for {current_provider.id}: {e}")
-            
-            # Find next available fallback
-            fallback = None
-            for p in available_for_fallback:
-                if p.id not in tried_providers:
-                    fallback = p
-                    break
-            
-            if fallback and attempts < max_fallback_attempts:
-                logger.info(f"Falling back to {fallback.id}")
-                current_provider = fallback
-                attempts += 1
-            else:
-                # No more fallbacks available
-                raise LLMRateLimitError(
+            try:
+                return await _call_provider(fallback_provider, context, allowed_labels)
+            except LLMRateLimitError as fe:
+                # Mark fallback as rate limited too
+                logger.warning(f"Fallback provider {fallback_provider.id} rate limited: {fe}")
+                update_provider_status(
+                    fallback_provider.id, 
+                    AvailabilityStatus.RATE_LIMITED, 
+                    "Rate limit exceeded during fallback"
+                )
+                continue  # Try next fallback
+            except Exception as fe:
+                # Other errors on fallback - log and continue to next
+                logger.error(f"Fallback provider {fallback_provider.id} failed: {fe}")
+                continue
+                
+        # If we exhausted fallbacks or none available, re-raise the original error
+        raise LLMRateLimitError(
                     f"Rate limit exceeded for {primary_provider.id}. "
-                    f"Tried {len(tried_providers)} provider(s). Please try again later."
+                    f"Tried {len(attempted_providers)} provider(s). Please try again later."
                 )
     
     # Should not reach here, but just in case
-    raise LLMRateLimitError("All providers rate-limited")
 

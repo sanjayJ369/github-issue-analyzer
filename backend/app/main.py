@@ -40,6 +40,16 @@ gh_client = GitHubClient(token=Config.GITHUB_TOKEN)
 analysis_cache = TTLCache(maxsize=100, ttl=900)
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Run startup tasks."""
+    logger.info("Application starting up...")
+    # Trigger initial provider discovery on boot to populate cache
+    # We use create_task to not block startup, allowing health checks to pass
+    # The first actual request will await the result if not finished
+    asyncio.create_task(discover_providers())
+
+
 @app.get("/llm/providers", response_model=List[LLMProviderResponse])
 async def list_providers(refresh: bool = False):
     """

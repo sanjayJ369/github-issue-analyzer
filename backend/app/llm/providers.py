@@ -81,10 +81,11 @@ class LLMProviderInfo:
 
 
 # Candidate models to verify for each provider
-# Note: Gemini free tier has 5 req/min limit, so we only verify 1 model
 CANDIDATE_MODELS = {
     "gemini": [
-        ("gemini-2.0-flash", "Gemini 2.0 Flash"),  # Primary model only
+        ("gemini-2.0-flash", "Gemini 2.0 Flash"),
+        ("gemini-1.5-pro", "Gemini 1.5 Pro"),
+        ("gemini-1.5-flash", "Gemini 1.5 Flash"),
     ],
     "openai": [
         ("gpt-4o", "GPT-4o"),
@@ -113,10 +114,25 @@ PLACEHOLDER_PATTERNS = [
 ]
 
 # Simple in-memory cache for discovered providers
-# Note: On serverless (Vercel), this resets on each cold start
-DISCOVERY_CACHE_TTL = 60  # Reduced from 300 for faster refresh
+# Cache for 1 hour to minimize API calls (especially for free tier limits)
+DISCOVERY_CACHE_TTL = 3600
 _LAST_DISCOVERED: List[LLMProvider] = []
 _LAST_DISCOVERY_TIME: float = 0
+
+
+def update_provider_status(provider_id: str, status: AvailabilityStatus, error_msg: str = None):
+    """
+    Update the status of a specific provider in the cache without re-discovery.
+    Useful for marking providers as rate-limited or erroring during runtime.
+    """
+    global _LAST_DISCOVERED
+    for p in _LAST_DISCOVERED:
+        if p.id == provider_id:
+            p.status = status
+            if error_msg:
+                p.error_message = error_msg
+            return True
+    return False
 
 
 def _is_placeholder(value: str) -> bool:
