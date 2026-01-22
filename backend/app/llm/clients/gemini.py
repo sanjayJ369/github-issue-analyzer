@@ -81,8 +81,74 @@ async def run_gemini(
             return IssueAnalysis.model_validate_json(result.text)
             
         except Exception as retry_error:
+            # Check for Rate Limit again
+            err_str = str(retry_error)
+            if "429" in err_str or "ResourceExhausted" in err_str or "QuotaExceeded" in err_str:
+                from ..router import LLMRateLimitError
+                raise LLMRateLimitError(
+                    "Rate Limit Exceeded. The AI provider is currently busy. Please try again in 30 seconds."
+                )
+
             logger.error(f"Gemini retry also failed: {retry_error}")
             
             # Try to extract raw output for debugging
             raw_output = getattr(result, 'text', str(retry_error)) if 'result' in dir() else str(retry_error)
             raise RuntimeError(f"LLM failed after retry. Raw output: {raw_output[:500]}")
+
+
+async def verify_model(api_key: str, model_name: str) -> bool:
+    """
+    Verify if a model is available and accessible with the given API key.
+    
+    Args:
+        api_key: Gemini API key
+        model_name: Model name to check
+        
+    Returns:
+        bool: True if model is accessible
+    """
+    # Configure specifically for this check
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel(model_name)
+    
+    try:
+        # Step A: Basic Ping
+        # "Reply with exactly: OK"
+        ping_resp = await model.generate_content_async(
+            "Reply with exactly: OK", 
+            generation_config=genai.GenerationConfig(max_output_tokens=5)
+        )
+        if not ping_resp.text or "OK" not in ping_resp.text:
+            logger.debug(f"Gemini Step A (Ping) failed for {model_name}: {ping_resp.text}")
+            return False
+
+        # Step B: Functional JSON Test
+        # "Return a JSON object with key hello and value world. Output ONLY JSON."
+        json_resp = await model.generate_content_async(
+            "Return a JSON object with key hello and value world. Output ONLY JSON.",
+            generation_config=genai.GenerationConfig(
+                max_output_tokens=30,
+                response_mime_type="application/json"
+            )
+        )
+        
+        try:
+            data = json.loads(json_resp.text)
+            if data.get("hello") != "world":
+                logger.debug(f"Gemini Step B (JSON) content mismatch for {model_name}: {data}")
+                return False
+        except json.JSONDecodeError:
+            logger.debug(f"Gemini Step B (JSON) parse error for {model_name}: {json_resp.text}")
+            return False
+            
+        return True
+            
+    except Exception as e:
+        # If rate limited, the key is valid and model exists. Treat as available.
+        err_str = str(e)
+        if "429" in err_str or "ResourceExhausted" in err_str or "QuotaExceeded" in err_str:
+            logger.info(f"Gemini {model_name} rate limited during verification (marking as available)")
+            return True
+            
+        logger.debug(f"Gemini model verification failed for {model_name}: {e}")
+        return False

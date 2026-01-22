@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
-import { Github, Play } from "lucide-react";
+import { Github, Play, RefreshCw, AlertCircle } from "lucide-react";
 import ProviderSelect from "./ProviderSelect";
 import { getProviders } from "../api";
 
@@ -16,12 +16,17 @@ const AnalysisForm = ({ onAnalyze, isLoading }) => {
     const [providers, setProviders] = useState([]);
     const [selectedProviderId, setSelectedProviderId] = useState(null);
     const [loadingProviders, setLoadingProviders] = useState(true);
+    const [fetchError, setFetchError] = useState(false);
 
-    // Fetch providers on mount
-    useEffect(() => {
-        const fetchProviders = async () => {
-            setLoadingProviders(true);
-            const data = await getProviders();
+    const fetchProviders = useCallback(async () => {
+        setLoadingProviders(true);
+        setFetchError(false);
+        const data = await getProviders();
+        
+        if (data === null) {
+            setFetchError(true);
+            setProviders([]);
+        } else {
             setProviders(data);
             
             // Restore from localStorage or default to first
@@ -31,12 +36,14 @@ const AnalysisForm = ({ onAnalyze, isLoading }) => {
             } else if (data.length > 0) {
                 setSelectedProviderId(data[0].id);
             }
-            
-            setLoadingProviders(false);
-        };
-        
-        fetchProviders();
+        }
+        setLoadingProviders(false);
     }, []);
+
+    // Fetch providers on mount
+    useEffect(() => {
+        fetchProviders();
+    }, [fetchProviders]);
 
     // Persist selection to localStorage
     const handleProviderChange = (providerId) => {
@@ -89,15 +96,39 @@ const AnalysisForm = ({ onAnalyze, isLoading }) => {
                         />
                     </div>
 
-                    {/* Provider Selection - hidden if only 1 provider */}
-                    <ProviderSelect 
-                        providers={providers}
-                        selectedId={selectedProviderId}
-                        onChange={handleProviderChange}
-                        loading={loadingProviders}
-                    />
+                    {/* Provider Selection */}
+                    {fetchError ? (
+                        <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md flex items-center justify-between">
+                             <div className="flex items-center gap-2 text-sm text-destructive">
+                                <AlertCircle className="w-4 h-4" />
+                                <span>Failed to load providers</span>
+                             </div>
+                             <Button 
+                                type="button" 
+                                variant="outline" 
+                                size="sm" 
+                                className="h-7 text-xs"
+                                onClick={fetchProviders}
+                             >
+                                <RefreshCw className="w-3 h-3 mr-1" />
+                                Retry
+                             </Button>
+                        </div>
+                    ) : (
+                        <ProviderSelect 
+                            providers={providers}
+                            selectedId={selectedProviderId}
+                            onChange={handleProviderChange}
+                            loading={loadingProviders}
+                        />
+                    )}
 
-                    <Button type="submit" className="w-full font-semibold" disabled={isLoading || loadingProviders} size="lg">
+                    <Button 
+                        type="submit" 
+                        className="w-full font-semibold" 
+                        disabled={isLoading || loadingProviders || fetchError} 
+                        size="lg"
+                    >
                         {isLoading ? (
                             <>
                                 <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mr-2" />

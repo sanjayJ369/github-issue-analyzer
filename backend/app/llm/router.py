@@ -27,6 +27,10 @@ class ProviderSelectionError(Exception):
     """Raised when provider selection fails."""
     pass
 
+class LLMRateLimitError(Exception):
+    """Raised when the LLM provider returns a URL/Quota error (429)."""
+    pass
+
 
 async def analyze_with_provider(
     provider_id: Optional[str],
@@ -78,8 +82,17 @@ async def analyze_with_provider(
             f"Available: {[p.id for p in providers]}"
         )
     
-    # Route to correct client
-    logger.info(f"Using provider: {provider.id} ({provider.model})")
+    # Route to correct client with rate-limit fallback
+    return await _execute_with_fallback(provider, providers, context, allowed_labels)
+
+
+async def _call_provider(
+    provider: LLMProvider,
+    context: str,
+    allowed_labels: list[str] = None
+) -> "IssueAnalysis":
+    """Execute LLM call for a specific provider."""
+    logger.info(f"Calling provider: {provider.id} ({provider.model})")
     
     if provider.provider == "gemini":
         return await run_gemini(
@@ -111,3 +124,57 @@ async def analyze_with_provider(
         )
     else:
         raise ProviderSelectionError(f"Unknown provider type: {provider.provider}")
+
+
+async def _execute_with_fallback(
+    primary_provider: LLMProvider,
+    all_providers: list[LLMProvider],
+    context: str,
+    allowed_labels: list[str] = None,
+    max_fallback_attempts: int = 2
+) -> "IssueAnalysis":
+    """
+    Execute LLM call with automatic fallback on rate-limit errors.
+    
+    If the primary provider returns a 429/rate-limit error, tries the next
+    available provider from the sorted list.
+    """
+    # Get available providers for fallback (excluding already-tried ones)
+    available_for_fallback = [
+        p for p in all_providers 
+        if p.is_available and p.id != primary_provider.id
+    ]
+    
+    attempts = 0
+    current_provider = primary_provider
+    tried_providers = []
+    
+    while attempts <= max_fallback_attempts:
+        try:
+            return await _call_provider(current_provider, context, allowed_labels)
+            
+        except LLMRateLimitError as e:
+            tried_providers.append(current_provider.id)
+            logger.warning(f"Rate limit hit for {current_provider.id}: {e}")
+            
+            # Find next available fallback
+            fallback = None
+            for p in available_for_fallback:
+                if p.id not in tried_providers:
+                    fallback = p
+                    break
+            
+            if fallback and attempts < max_fallback_attempts:
+                logger.info(f"Falling back to {fallback.id}")
+                current_provider = fallback
+                attempts += 1
+            else:
+                # No more fallbacks available
+                raise LLMRateLimitError(
+                    f"Rate limit exceeded for {primary_provider.id}. "
+                    f"Tried {len(tried_providers)} provider(s). Please try again later."
+                )
+    
+    # Should not reach here, but just in case
+    raise LLMRateLimitError("All providers rate-limited")
+

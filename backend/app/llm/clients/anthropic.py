@@ -107,3 +107,45 @@ async def run_anthropic(
     except Exception as e:
         logger.error(f"Anthropic error: {e}")
         raise RuntimeError(f"Anthropic error: {e}")
+
+
+async def verify_model(api_key: str, model_name: str) -> bool:
+    """
+    Verify if a model is available and accessible with the given API key.
+    
+    Args:
+        api_key: Anthropic API key
+        model_name: Model name to check
+        
+    Returns:
+        bool: True if model is accessible
+    """
+    if "claude" not in model_name.lower():
+        return False
+        
+    url = "https://api.anthropic.com/v1/messages"
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    
+    payload = {
+        "model": model_name,
+        "max_tokens": 1,
+        "messages": [
+            {"role": "user", "content": "test"}
+        ]
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(url, headers=headers, json=payload)
+            if response.status_code == 200:
+                return True
+            logger.debug(f"Anthropic verification failed {model_name}: {response.status_code}")
+            return False
+            
+    except Exception as e:
+        logger.debug(f"Anthropic model verification failed for {model_name}: {e}")
+        return False

@@ -15,7 +15,7 @@ export const getProviders = async () => {
     return await response.json();
   } catch (error) {
     console.error("Failed to fetch providers:", error);
-    return [];
+    return null;
   }
 };
 

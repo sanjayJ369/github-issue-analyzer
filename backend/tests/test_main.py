@@ -86,10 +86,10 @@ def test_analyze_closed_issue_returns_warning(mock_providers, mock_analyze):
     original_fetch_labels = gh_client.fetch_labels
     analysis_cache.clear()
     
-    from app.llm.providers import LLMProvider
+    from app.llm.providers import LLMProvider, AvailabilityStatus
     mock_providers.return_value = [
         LLMProvider(id="gemini_1", label="Gemini", provider="gemini", 
-                    model="gemini-2.0-flash", api_key="test_key", is_available=True)
+                    model="gemini-2.0-flash", api_key="test_key", status=AvailabilityStatus.AVAILABLE)
     ]
 
     try:
@@ -207,10 +207,10 @@ def test_response_contains_required_fields(mock_providers, mock_analyze):
     original_fetch_labels = gh_client.fetch_labels
     analysis_cache.clear()
     
-    from app.llm.providers import LLMProvider
+    from app.llm.providers import LLMProvider, AvailabilityStatus
     mock_providers.return_value = [
         LLMProvider(id="gemini_1", label="Gemini", provider="gemini", 
-                    model="gemini-2.0-flash", api_key="test_key", is_available=True)
+                    model="gemini-2.0-flash", api_key="test_key", status=AvailabilityStatus.AVAILABLE)
     ]
 
     try:

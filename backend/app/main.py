@@ -9,8 +9,8 @@ from typing import List
 # App modules
 from .schemas import AnalyzeRequest, AnalyzeResponse, AnalyzeResponseMeta, LLMProviderResponse
 from .github_client import GitHubClient
-from .llm.router import analyze_with_provider, ProviderSelectionError
-from .llm.providers import get_provider_info_list, get_available_providers
+from .llm.router import analyze_with_provider, ProviderSelectionError, LLMRateLimitError
+from .llm.providers import get_provider_info_list, get_available_providers, discover_providers
 from .utils import parse_github_url, build_issue_context, truncate_text
 from .config import Config
 
@@ -41,24 +41,27 @@ analysis_cache = TTLCache(maxsize=100, ttl=900)
 
 
 @app.get("/llm/providers", response_model=List[LLMProviderResponse])
-def list_providers():
+async def list_providers():
     """
     List all available LLM providers.
+    Performs async discovery of models with latency measurement.
     
-    Returns list of configured providers with their IDs and models.
-    The frontend should:
-    - Show no dropdown if length == 1 (auto-select)
-    - Show dropdown if length > 1
-    - Show error if length == 0
+    Returns list of configured providers with their IDs, models, status, and latency.
     """
-    providers = get_provider_info_list()
+    # Trigger async discovery
+    providers = await discover_providers()
+    
     return [
         LLMProviderResponse(
             id=p.id,
             label=p.label,
             provider=p.provider,
             model=p.model,
-            is_available=p.is_available
+            is_available=p.is_available,
+            status=p.status.value,  # Convert enum to string
+            latency_ms=p.latency_ms,
+            speed=p.speed,
+            error_message=p.error_message
         )
         for p in providers
     ]
@@ -152,6 +155,9 @@ async def analyze_issue(request: AnalyzeRequest):
 
     except ProviderSelectionError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except LLMRateLimitError as e:
+        logger.warning(f"Rate limit hit: {e}")
+        raise HTTPException(status_code=429, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except RuntimeError as e:
