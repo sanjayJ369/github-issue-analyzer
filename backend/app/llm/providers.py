@@ -65,8 +65,6 @@ ESTIMATED_LATENCY_MS = {
     "deepseek-ai/DeepSeek-R1": 5000,
     "deepseek-ai/DeepSeek-R1-Distill-Llama-8B": 2000,
     "meta-llama/Llama-3.1-8B-Instruct": 1500,
-    "google/gemma-2-2b-it": 800,
-    "microsoft/Phi-3-mini-4k-instruct": 1000,
 }
 
 
@@ -113,8 +111,6 @@ CANDIDATE_MODELS = {
         ("gemini-flash-latest", "Gemini Flash (Latest)"),
         ("gemini-2.5-flash", "Gemini 2.5 Flash"),
         ("gemini-2.5-pro", "Gemini 2.5 Pro"),
-        ("gemini-2.0-flash-lite", "Gemini 2.0 Flash Lite"),
-        ("gemini-2.0-flash", "Gemini 2.0 Flash"),
     ],
     "openai": [
         ("gpt-4o", "GPT-4o"),
@@ -131,8 +127,6 @@ CANDIDATE_MODELS = {
         ("deepseek-ai/DeepSeek-R1", "DeepSeek R1"),
         ("deepseek-ai/DeepSeek-R1-Distill-Llama-8B", "DeepSeek R1 Distill"),
         ("meta-llama/Llama-3.1-8B-Instruct", "Llama 3.1 8B"),
-        ("google/gemma-2-2b-it", "Gemma 2 2B"),
-        ("microsoft/Phi-3-mini-4k-instruct", "Phi-3 Mini"),
     ]
 }
 
