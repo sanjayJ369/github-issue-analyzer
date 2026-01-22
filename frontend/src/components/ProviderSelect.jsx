@@ -70,9 +70,38 @@ const ProviderSelect = ({ providers, selectedId, onChange, loading }) => {
         }
     }, [providers, loading]);
     
-    // Don't show if only 1 provider (auto-select)
-    if (!loading && providers.length <= 1) {
+    // Check if we should hide the dropdown (auto-select mode)
+    // We only hide if there's 1 provider AND it is fully available.
+    // If the single provider has issues (rate limited/unavailable), we show UI so user knows.
+    const isSingleProvider = !loading && providers && providers.length === 1;
+    const isSingleProviderUnavailable = isSingleProvider && providers[0].status !== 'available';
+    
+    // If single available provider, hide UI (auto-select)
+    if (isSingleProvider && !isSingleProviderUnavailable) {
         return null;
+    }
+
+    // If single UNAVAILABLE provider, show a status banner instead of dropdown
+    if (isSingleProviderUnavailable) {
+        const provider = providers[0];
+        const statusInfo = getStatusIndicator(provider.status, false);
+        
+        return (
+            <div className="space-y-2">
+                <label className="text-sm font-medium leading-none flex items-center gap-2">
+                    <Zap className="w-3.5 h-3.5 text-primary" />
+                    LLM Provider
+                </label>
+                <div className={`flex items-center gap-2 text-sm p-2 rounded-md border ${statusInfo.color} bg-opacity-10 border-opacity-20`}>
+                    {statusInfo.icon && <statusInfo.icon className="w-4 h-4" />}
+                    <span className="font-medium">{provider.label}</span>
+                    <span className="opacity-80">- {statusInfo.tooltip}</span>
+                    {provider.error_message && (
+                        <span className="text-xs opacity-70 ml-1">({provider.error_message})</span>
+                    )}
+                </div>
+            </div>
+        );
     }
     
     // Show loading state
