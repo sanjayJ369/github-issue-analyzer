@@ -145,10 +145,11 @@ async def verify_model(api_key: str, model_name: str) -> bool:
             
     except Exception as e:
         err_str = str(e)
-        # Rate limited - return False, don't mark as available
+        # Rate limited - return tuple with RATE_LIMITED status so it's still shown
         if "429" in err_str or "ResourceExhausted" in err_str or "QuotaExceeded" in err_str:
-            logger.warning(f"Gemini {model_name} rate limited during verification - marking as rate_limited")
-            return False  # Don't mark as available - it's rate limited
+            logger.warning(f"Gemini {model_name} rate limited during verification")
+            # Return tuple format: (status_string, latency_placeholder, error_message)
+            return ("rate_limited", 0, "Rate limit exceeded during verification")
             
         logger.debug(f"Gemini model verification failed for {model_name}: {e}")
         return False

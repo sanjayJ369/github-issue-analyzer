@@ -268,9 +268,23 @@ async def _verify_candidate(
                 status = AvailabilityStatus.AVAILABLE if result else AvailabilityStatus.UNAVAILABLE
             elif isinstance(result, tuple) and len(result) >= 2:
                 # New tuple format: (status, latency_ms, error_message)
-                status = result[0] if isinstance(result[0], AvailabilityStatus) else (
-                    AvailabilityStatus.AVAILABLE if result[0] else AvailabilityStatus.UNAVAILABLE
-                )
+                raw_status = result[0]
+                if isinstance(raw_status, AvailabilityStatus):
+                    status = raw_status
+                elif isinstance(raw_status, str):
+                    # Handle string-based status from verification functions
+                    status_map = {
+                        "available": AvailabilityStatus.AVAILABLE,
+                        "unavailable": AvailabilityStatus.UNAVAILABLE,
+                        "rate_limited": AvailabilityStatus.RATE_LIMITED,
+                        "error": AvailabilityStatus.ERROR,
+                    }
+                    status = status_map.get(raw_status.lower(), AvailabilityStatus.UNAVAILABLE)
+                elif isinstance(raw_status, bool):
+                    status = AvailabilityStatus.AVAILABLE if raw_status else AvailabilityStatus.UNAVAILABLE
+                else:
+                    status = AvailabilityStatus.UNAVAILABLE
+                    
                 if len(result) > 2 and result[2]:
                     error_message = str(result[2])
             else:
