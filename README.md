@@ -2,20 +2,32 @@
 
 A powerful AI-powered tool that transforms messy GitHub issues into structured engineering insights. Built with **FastAPI** + **React** + **Google Gemini**.
 
-![IssueInsight Demo](https://placehold.co/800x400?text=IssueInsight+-+Analyze+GitHub+Issues+with+AI)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?style=for-the-badge&logo=vercel)](https://github-issue-analyzer-smoky.vercel.app/)
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-black?style=for-the-badge&logo=github)](https://github.com/sanjayJ369/github-issue-analyzer/)
 
 ## ✨ Features
 
+- **Auto-Detection LLM Providers**: Dynamically detects API keys from `.env` and verifies availability
+- **Latency Measurement**: Real response time measurement for each model with performance labels
+- **Rate-Limit Handling**: Automatic fallback to next available provider on 429 errors
 - **Structured Analysis**: Summary, classification, priority scoring, and label suggestions
-- **Multi-Provider LLM**: Support for multiple API keys with automatic or manual selection
+- **Multi-Provider Support**: Gemini, OpenAI, Anthropic, and Hugging Face
 - **Modern UI**: React-based SPA with dark/light theme, responsive design
 - **Agentic UX**: Real-time status feed showing analysis pipeline progress
-- **Extra Mile Features**:
-  - 📋 Copy JSON button for easy export
-  - ⚠️ Closed issue warnings
-  - 💾 15-minute TTL caching for fast repeat queries
-  - 🔄 Intelligent error handling with retry options
-  - 🔀 Provider selection with localStorage persistence
+
+### Extra Features
+- 📋 Copy JSON button for easy export
+- ⚠️ Closed issue warnings
+- 💾 15-minute TTL caching for fast repeat queries
+- 🔄 Intelligent error handling with retry options
+- 🔀 Provider selection with localStorage persistence
+- ⏱️ Latency-based speed indicators (Fast/Medium/Slow)
+
+---
+
+## 🌐 Live Demo
+
+**Try it now**: [https://github-issue-analyzer-smoky.vercel.app/](https://github-issue-analyzer-smoky.vercel.app/)
 
 ---
 
@@ -29,8 +41,8 @@ A powerful AI-powered tool that transforms messy GitHub issues into structured e
                                  │
                                  ▼
                         ┌─────────────────┐
-                        │  Google Gemini  │
-                        │  (Structured)   │
+                        │  LLM Providers  │
+                        │  (Auto-Detect)  │
                         └─────────────────┘
 ```
 
@@ -38,7 +50,7 @@ A powerful AI-powered tool that transforms messy GitHub issues into structured e
 |-------|------------|---------|
 | Frontend | React + Vite + Tailwind CSS | Modern, responsive UI |
 | Backend | FastAPI + Pydantic | Type-safe API with validation |
-| AI/LLM | Google Gemini (JSON Mode) | Structured output generation |
+| AI/LLM | Gemini, OpenAI, Anthropic, HuggingFace | Multi-provider support with auto-detection |
 | Data | GitHub REST API + HTTPX | Async data fetching with retries |
 
 ---
@@ -48,7 +60,11 @@ A powerful AI-powered tool that transforms messy GitHub issues into structured e
 ### Prerequisites
 - Python 3.11+
 - Node.js 18+
-- Google Gemini API Key ([Get one free](https://aistudio.google.com/app/apikey))
+- At least one LLM API Key:
+  - [Google Gemini](https://aistudio.google.com/app/apikey) (free)
+  - [OpenAI](https://platform.openai.com/api-keys)
+  - [Anthropic](https://console.anthropic.com/)
+  - [Hugging Face](https://huggingface.co/settings/tokens)
 - (Optional) GitHub Token for higher rate limits
 
 ---
@@ -62,7 +78,7 @@ cd github-issue-analyzer
 
 # 2. Configure environment
 cp .env.example .env
-nano .env  # Add your GEMINI_API_KEY and optionally GITHUB_TOKEN
+nano .env  # Add your API keys
 
 # 3. Start Backend (Terminal 1)
 cd backend
@@ -88,7 +104,7 @@ cd github-issue-analyzer
 
 # 2. Configure environment
 copy .env.example .env
-# Open .env in notepad and add your GEMINI_API_KEY
+# Open .env in notepad and add your API keys
 
 # 3. Start Backend (Terminal 1 - PowerShell)
 cd backend
@@ -116,6 +132,25 @@ npm run dev
 2. Frontend App: http://localhost:5173
 3. Try analyzing: `https://github.com/fastapi/fastapi/issues/1`
 
+---
+
+## 🔑 Environment Variables
+
+```bash
+# LLM Providers (at least one required)
+GEMINI_API_KEY=your_gemini_key
+OPENAI_API_KEY=your_openai_key
+ANTHROPIC_API_KEY=your_anthropic_key
+HF_API_KEY=your_huggingface_key
+
+# Optional
+GITHUB_TOKEN=your_github_token  # Higher rate limits
+MODEL_NAME=gemini-2.0-flash     # Default model
+```
+
+The app will auto-detect which providers are available and verify them with real LLM calls.
+
+---
 
 ## 📂 Project Structure
 
@@ -125,12 +160,13 @@ github-issue-analyzer/
 │   ├── app/
 │   │   ├── main.py           # FastAPI endpoints
 │   │   ├── github_client.py  # GitHub API integration
-│   │   ├── llm_client.py     # Gemini integration
+│   │   ├── llm/
+│   │   │   ├── providers.py  # Auto-detection & latency measurement
+│   │   │   ├── router.py     # Provider routing with fallback
+│   │   │   └── clients/      # Provider-specific clients
 │   │   ├── schemas.py        # Pydantic models
 │   │   └── utils.py          # URL parsing, context building
-│   ├── tests/
-│   │   ├── test_main.py      # Endpoint tests (10 tests)
-│   │   └── test_utils.py     # Utility tests (14 tests)
+│   ├── tests/                # 11 test cases
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
@@ -138,34 +174,8 @@ github-issue-analyzer/
 │   │   ├── api.js            # API client
 │   │   └── App.jsx           # Main application
 │   └── package.json
-├── .github/workflows/
-│   └── ci-cd.yml             # GitHub Actions CI
-├── vercel.json               # Vercel deployment config
-└── README.md
+└── vercel.json               # Vercel deployment config
 ```
-
----
-
-## 🧠 Prompt Engineering Approach
-
-The LLM prompt is crafted with several key techniques:
-
-### 1. Strict Output Requirements
-- Enforces `X/5 - Justification` format for priority scores
-- Limits labels to standard kebab-case (e.g., `bug`, `enhancement`)
-- Uses Gemini's **Structured Output** mode for guaranteed JSON schema
-
-### 3. Context-Aware Label Suggestions
-```python
-if allowed_labels:
-    system_prompt += f"\n\nPrefer using these existing repository labels: {labels_str}"
-```
-Fetches actual repo labels and includes them in the prompt for relevant suggestions.
-
-### 4. Robustness
-- Handles missing issue bodies with `"(No description)"`
-- Truncates long comment threads with `[...Remaining N comments truncated...]`
-- 24 unit tests covering edge cases
 
 ---
 
@@ -176,36 +186,22 @@ cd backend
 pytest tests/ -v
 ```
 
-**Coverage: 24 tests**
+**11 tests covering:**
 - Health check endpoint
+- Provider listing with latency
 - Success/error scenarios (404, 403, 400, 422)
 - Closed issue warnings
-- URL parsing edge cases
-- Context building with comments
-- Truncation behavior
-
----
-
-## 🔧 Edge Case Handling
-
-| Edge Case | Solution |
-|-----------|----------|
-| No comments | Empty array handled gracefully |
-| Very long threads | Truncated with clear marker in context |
-| Closed issues | Warning banner in response |
-| Invalid URLs | 400 Bad Request with clear message |
-| Rate limits | 403 with "rate limit" detail |
-| Missing API key | Graceful startup + clear error on use |
+- Response structure validation
 
 ---
 
 ## 🌐 Deployment
 
 ### Vercel (Production)
-The app is configured for Vercel monorepo deployment:
+- **Live URL**: [https://github-issue-analyzer-smoky.vercel.app/](https://github-issue-analyzer-smoky.vercel.app/)
 - Frontend: Static build via `@vercel/static-build`
 - Backend: Python serverless function via `@vercel/python`
-- Environment variables: Set `GEMINI_API_KEY` and `GITHUB_TOKEN` in Vercel dashboard
+- Environment variables: Set API keys in Vercel dashboard
 
 ### GitHub Actions CI
 - Runs on every push/PR to `main`
@@ -214,58 +210,35 @@ The app is configured for Vercel monorepo deployment:
 
 ---
 
-## 📦 Dependencies
+## 💡 Key Features
 
-### Backend
-```
-fastapi, uvicorn, pydantic, httpx, tenacity, cachetools, python-dotenv, google-generativeai
-```
-
-### Frontend
-```
-react, vite, tailwindcss, lucide-react, sonner, react-syntax-highlighter
-```
-
----
-
-## 💡 Extra Mile Features
+### LLM Provider Auto-Detection
+| Feature | Description |
+|---------|-------------|
+| 🔍 **Auto-Detection** | Scans `.env` for API keys automatically |
+| ⏱️ **Latency Measurement** | Real response time for each model |
+| 🏷️ **Speed Labels** | Fast (<1s), Medium (1-3s), Slow (>3s) |
+| 🔄 **Rate-Limit Fallback** | Auto-retry with next available provider |
+| 🔒 **Concurrency Limiting** | Semaphore-based (max 5 parallel checks) |
 
 ### UI/UX Enhancements
 | Feature | Description |
 |---------|-------------|
-| 📋 **Copy JSON Button** | One-click export of analysis results to clipboard |
-| 🌓 **Theme Toggle** | Dark/Light mode with localStorage persistence |
-| 📱 **Responsive Design** | Fully adaptive layout for mobile, tablet, desktop |
-| ✨ **Agentic Status Feed** | Real-time visualization of analysis pipeline stages |
-| ⚠️ **Closed Issue Warning** | Visual amber banner alerting users to stale data |
-| 🎨 **Glassmorphism UI** | Modern frosted-glass card effects with backdrop blur |
-
-### Performance & Reliability
-| Feature | Description |
-|---------|-------------|
-| 💾 **Response Caching** | 15-minute TTL cache to avoid redundant API calls |
-| 🔄 **Retry Logic** | Automatic retries with exponential backoff for GitHub API |
-| ⚡ **Parallel Fetching** | Issue, comments, and labels fetched concurrently |
-| 🧹 **Graceful Degradation** | App works even if comments/labels fetch fails |
-
-### Developer Experience
-| Feature | Description |
-|---------|-------------|
-| 🧪 **24 Unit Tests** | Comprehensive test coverage for endpoints and utilities |
-| 📖 **Swagger Docs** | Auto-generated API documentation at `/docs` |
-| 🏗️ **CI/CD Pipeline** | GitHub Actions for automated testing on every push |
-| 🌐 **Vercel Ready** | Zero-config deployment with monorepo support |
-
-### Intelligent Analysis
-| Feature | Description |
-|---------|-------------|
-| 🏷️ **Context-Aware Labels** | Fetches repo's existing labels for relevant suggestions |
-| 📊 **Structured Priority** | Enforced `X/5 - Justification` format for actionable scores |
-| ✂️ **Smart Truncation** | Long comment threads intelligently truncated with markers |
-| 🔍 **Issue Type Detection** | Classifies as bug, feature_request, documentation, question, other |
+| 📋 **Copy JSON Button** | One-click export of analysis results |
+| 🌓 **Theme Toggle** | Dark/Light mode with persistence |
+| 📱 **Responsive Design** | Adaptive layout for all devices |
+| ✨ **Status Feed** | Real-time visualization of pipeline |
+| 🎨 **Modern UI** | Glassmorphism effects with animations |
 
 ---
 
 ## 📝 License
 
 MIT License - Feel free to use and modify!
+
+---
+
+## 🔗 Links
+
+- **Live Demo**: [https://github-issue-analyzer-smoky.vercel.app/](https://github-issue-analyzer-smoky.vercel.app/)
+- **GitHub**: [https://github.com/sanjayJ369/github-issue-analyzer/](https://github.com/sanjayJ369/github-issue-analyzer/)
