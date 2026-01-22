@@ -444,9 +444,15 @@ def get_available_providers() -> List[LLMProvider]:
             
             if env_model: model_id = env_model
             
+            # Create consistent ID format (same as discovered providers)
+            safe_model = model_id.split("/")[-1].replace(".", "").replace("-", "_").lower()
+            if len(safe_model) > 20: 
+                safe_model = safe_model[:20]
+            pid = f"{ptype}_{config['num']}_{safe_model}"
+            
             fallback.append(LLMProvider(
-                id=f"{ptype}_{config['num']}",
-                label=f"{ptype.capitalize()} (Default)",
+                id=pid,
+                label=f"{model_name}",
                 provider=ptype,
                 model=model_id,
                 api_key=config['key'],

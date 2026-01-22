@@ -29,12 +29,17 @@ const AnalysisForm = ({ onAnalyze, isLoading }) => {
         } else {
             setProviders(data);
             
-            // Restore from localStorage or default to first
+            // Only consider available providers for selection
+            const availableProviders = data.filter(p => p.status === 'available');
+            
+            // Restore from localStorage or default to first available
             const stored = localStorage.getItem(STORAGE_KEY);
-            if (stored && data.some(p => p.id === stored)) {
+            if (stored && availableProviders.some(p => p.id === stored)) {
                 setSelectedProviderId(stored);
-            } else if (data.length > 0) {
-                setSelectedProviderId(data[0].id);
+            } else if (availableProviders.length > 0) {
+                // Clear invalid stored value and select first available
+                localStorage.removeItem(STORAGE_KEY);
+                setSelectedProviderId(availableProviders[0].id);
             }
         }
         setLoadingProviders(false);
