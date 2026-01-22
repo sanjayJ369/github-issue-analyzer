@@ -95,9 +95,10 @@ const ProviderSelect = ({ providers, selectedId, onChange, loading }) => {
         );
     }
     
-    // Filter to only available providers for the dropdown
-    const availableProviders = providers.filter(p => p.is_available || p.status === 'available');
-    const unavailableProviders = providers.filter(p => !p.is_available && p.status !== 'available');
+    // Filter to ONLY providers with status === 'available' for the main dropdown
+    // Rate-limited providers should be shown as unavailable since they can't be used
+    const availableProviders = providers.filter(p => p.status === 'available');
+    const unavailableProviders = providers.filter(p => p.status !== 'available');
     
     return (
         <div className="space-y-2">

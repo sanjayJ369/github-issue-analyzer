@@ -26,7 +26,7 @@ const Navbar = () => {
                         </a>
                     </Button>
                     <div className="hidden sm:block w-px h-4 bg-border mx-1" />
-                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground w-8 h-8 sm:w-9 sm:h-9" onClick={() => window.open('https://github.com', '_blank')}>
+                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground w-8 h-8 sm:w-9 sm:h-9" onClick={() => window.open('https://github.com/sanjayJ369/github-issue-analyzer', '_blank')}>
                          <Github className="w-4 h-4 sm:w-5 sm:h-5" />
                     </Button>
                     <Button 
