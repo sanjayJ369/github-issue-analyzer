@@ -99,47 +99,23 @@ async def run_gemini(
 async def verify_model(api_key: str, model_name: str) -> bool:
     """
     Verify if a model is available and accessible with the given API key.
-    Uses a single lightweight request to minimize rate limit impact.
+    
+    NOTE: Actual verification is currently DISABLED to avoid hitting 
+    Gemini Free Tier rate limits (which can be as low as 5 RPM).
+    We assume availability if the API key is present.
     
     Args:
         api_key: Gemini API key
         model_name: Model name to check
         
     Returns:
-        bool: True if model is accessible, or tuple for rate-limited status
+        bool: Always True (to bypass rate limits)
     """
-    # Configure specifically for this check
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(model_name)
-    
-    try:
-        # Single verification request - JSON test (validates both connectivity and function)
-        json_resp = await model.generate_content_async(
-            "Return a JSON object with key hello and value world. Output ONLY JSON.",
-            generation_config=genai.GenerationConfig(
-                max_output_tokens=30,
-                response_mime_type="application/json"
-            )
-        )
-        
-        try:
-            data = json.loads(json_resp.text)
-            if data.get("hello") != "world":
-                logger.debug(f"Gemini JSON content mismatch for {model_name}: {data}")
-                return False
-        except json.JSONDecodeError:
-            logger.debug(f"Gemini JSON parse error for {model_name}: {json_resp.text}")
-            return False
-            
-        return True
-            
-    except Exception as e:
-        err_str = str(e)
-        # Rate limited - return tuple with RATE_LIMITED status so it's still shown
-        if "429" in err_str or "ResourceExhausted" in err_str or "QuotaExceeded" in err_str:
-            logger.warning(f"Gemini {model_name} rate limited during verification")
-            # Return tuple format: (status_string, latency_placeholder, error_message)
-            return ("rate_limited", 0, "Rate limit exceeded during verification")
-            
-        logger.debug(f"Gemini model verification failed for {model_name}: {e}")
-        return False
+    # SKIP VERIFICATION to avoid rate limits
+    return True
+
+    # Original verification logic (commented out)
+    # genai.configure(api_key=api_key)
+    # model = genai.GenerativeModel(model_name)
+    # try:
+    #     ...

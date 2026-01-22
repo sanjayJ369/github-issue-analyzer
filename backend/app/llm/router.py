@@ -12,7 +12,15 @@ Supported providers:
 """
 
 from typing import Optional
-from .providers import get_available_providers, get_provider_by_id, get_default_provider, LLMProvider
+from .providers import (
+    get_available_providers, 
+    get_provider_by_id, 
+    get_default_provider, 
+    LLMProvider,
+    AvailabilityStatus,
+    verify_on_first_use,
+    update_provider_status
+)
 from .clients.gemini import run_gemini
 from .clients.openai import run_openai
 from .clients.anthropic import run_anthropic
@@ -94,29 +102,51 @@ async def _call_provider(
     """Execute LLM call for a specific provider."""
     logger.info(f"Calling provider: {provider.id} ({provider.model})")
     
+    # If provider is ASSUMED (not yet verified), verify before first use
+    # Skip verification for Gemini since verify_gemini always returns True
+    if provider.status == AvailabilityStatus.ASSUMED and provider.provider != "gemini":
+        logger.info(f"Provider {provider.id} is ASSUMED, verifying before use...")
+        is_available, error_msg = await verify_on_first_use(provider)
+        if not is_available:
+            # Get list of verified working models to suggest
+            all_providers = get_available_providers()
+            verified_models = [p.label for p in all_providers if p.status == AvailabilityStatus.AVAILABLE]
+            
+            suggestion = ""
+            if verified_models:
+                suggestion = f" Try using one of these verified models: {', '.join(verified_models[:3])}"
+            else:
+                suggestion = " Try using a different model like Gemini Flash or GPT-4o Mini."
+            
+            raise ProviderSelectionError(
+                f"Model '{provider.label}' is not working ({error_msg}).{suggestion}"
+            )
+    
+    # Make the actual LLM call
+    result = None
     if provider.provider == "gemini":
-        return await run_gemini(
+        result = await run_gemini(
             context=context,
             api_key=provider.api_key,
             model_name=provider.model,
             allowed_labels=allowed_labels
         )
     elif provider.provider == "openai":
-        return await run_openai(
+        result = await run_openai(
             context=context,
             api_key=provider.api_key,
             model_name=provider.model,
             allowed_labels=allowed_labels
         )
     elif provider.provider == "anthropic":
-        return await run_anthropic(
+        result = await run_anthropic(
             context=context,
             api_key=provider.api_key,
             model_name=provider.model,
             allowed_labels=allowed_labels
         )
     elif provider.provider == "huggingface":
-        return await run_huggingface(
+        result = await run_huggingface(
             context=context,
             api_key=provider.api_key,
             model_name=provider.model,
@@ -124,6 +154,13 @@ async def _call_provider(
         )
     else:
         raise ProviderSelectionError(f"Unknown provider type: {provider.provider}")
+    
+    # Mark provider as confirmed AVAILABLE after successful use
+    if provider.status == AvailabilityStatus.ASSUMED:
+        update_provider_status(provider.id, AvailabilityStatus.AVAILABLE)
+        logger.info(f"Provider {provider.id} confirmed AVAILABLE after successful use")
+    
+    return result
 
 
 async def _execute_with_fallback(

@@ -29,8 +29,8 @@ const AnalysisForm = ({ onAnalyze, isLoading }) => {
         } else {
             setProviders(data);
             
-            // Only consider available providers for selection
-            const availableProviders = data.filter(p => p.status === 'available');
+            // Only consider available or assumed providers for selection
+            const availableProviders = data.filter(p => ['available', 'assumed'].includes(p.status));
             
             // Restore from localStorage or default to first available
             const stored = localStorage.getItem(STORAGE_KEY);

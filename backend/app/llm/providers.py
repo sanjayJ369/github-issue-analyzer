@@ -36,11 +36,38 @@ class AvailabilityStatus(str, Enum):
     UNAVAILABLE = "unavailable"
     RATE_LIMITED = "rate_limited"
     ERROR = "error"
+    ASSUMED = "assumed"  # Not yet verified, assumed working based on API key
 
 
-# Concurrency settings
+# Concurrency settings (kept for backwards compatibility but mostly unused now)
 CONCURRENCY_LIMIT = 5  # Max parallel verification requests per discovery
 VERIFICATION_TIMEOUT = 15.0  # Default timeout per model verification (seconds)
+
+# Estimated latency for models (used when skipping real verification)
+# Based on typical response times from benchmarks
+ESTIMATED_LATENCY_MS = {
+    # Gemini models
+    "gemini-flash-latest": 800,
+    "gemini-2.5-flash": 900,
+    "gemini-2.5-pro": 2500,
+    "gemini-2.0-flash-lite": 600,
+    "gemini-2.0-flash": 700,
+    # OpenAI models  
+    "gpt-4o": 1500,
+    "gpt-4o-mini": 800,
+    "o1-mini": 3000,
+    "gpt-4.5-preview": 2000,
+    # Anthropic models
+    "claude-3-5-sonnet-20241022": 1800,
+    "claude-3-opus-20240229": 4000,
+    "claude-3-haiku-20240307": 600,
+    # HuggingFace models
+    "deepseek-ai/DeepSeek-R1": 5000,
+    "deepseek-ai/DeepSeek-R1-Distill-Llama-8B": 2000,
+    "meta-llama/Llama-3.1-8B-Instruct": 1500,
+    "google/gemma-2-2b-it": 800,
+    "microsoft/Phi-3-mini-4k-instruct": 1000,
+}
 
 
 @dataclass
@@ -83,9 +110,11 @@ class LLMProviderInfo:
 # Candidate models to verify for each provider
 CANDIDATE_MODELS = {
     "gemini": [
+        ("gemini-flash-latest", "Gemini Flash (Latest)"),
+        ("gemini-2.5-flash", "Gemini 2.5 Flash"),
+        ("gemini-2.5-pro", "Gemini 2.5 Pro"),
+        ("gemini-2.0-flash-lite", "Gemini 2.0 Flash Lite"),
         ("gemini-2.0-flash", "Gemini 2.0 Flash"),
-        ("gemini-1.5-pro", "Gemini 1.5 Pro"),
-        ("gemini-1.5-flash", "Gemini 1.5 Flash"),
     ],
     "openai": [
         ("gpt-4o", "GPT-4o"),
@@ -118,6 +147,9 @@ PLACEHOLDER_PATTERNS = [
 DISCOVERY_CACHE_TTL = 3600
 _LAST_DISCOVERED: List[LLMProvider] = []
 _LAST_DISCOVERY_TIME: float = 0
+
+# Track which models have been verified during actual use
+_VERIFIED_MODELS: Dict[str, AvailabilityStatus] = {}
 
 
 def update_provider_status(provider_id: str, status: AvailabilityStatus, error_msg: str = None):
@@ -232,107 +264,40 @@ async def _verify_candidate(
     semaphore: asyncio.Semaphore
 ) -> LLMProvider:
     """
-    Verify a single model candidate with latency measurement.
+    Build a provider entry WITHOUT making API calls.
     
-    Uses semaphore to limit concurrent verifications.
-    Returns LLMProvider with status, latency, and error details.
+    Instead of verifying availability via API, we:
+    1. Check if this model was previously verified during actual use
+    2. If not, mark it as ASSUMED (will be verified on first use)
+    3. Use estimated latency values from our lookup table
+    
+    This avoids hitting rate limits during discovery.
     """
     ptype = config["type"]
     pnum = config["num"]
     key = config["key"]
     
-    status = AvailabilityStatus.UNAVAILABLE
-    latency_ms: Optional[int] = None
-    error_message: Optional[str] = None
-    
-    async with semaphore:
-        start_time = time.perf_counter()
-        
-        try:
-            # Call provider-specific verify function
-            if ptype == "gemini":
-                result = await asyncio.wait_for(
-                    verify_gemini(key, model_id),
-                    timeout=VERIFICATION_TIMEOUT
-                )
-            elif ptype == "openai":
-                result = await asyncio.wait_for(
-                    verify_openai(key, model_id),
-                    timeout=VERIFICATION_TIMEOUT
-                )
-            elif ptype == "anthropic":
-                result = await asyncio.wait_for(
-                    verify_anthropic(key, model_id),
-                    timeout=VERIFICATION_TIMEOUT
-                )
-            elif ptype == "huggingface":
-                result = await asyncio.wait_for(
-                    verify_huggingface(key, model_id),
-                    timeout=VERIFICATION_TIMEOUT
-                )
-            else:
-                result = (AvailabilityStatus.ERROR, 0, f"Unknown provider: {ptype}")
-            
-            # Calculate latency
-            elapsed = time.perf_counter() - start_time
-            latency_ms = int(elapsed * 1000)
-            
-            # Handle result - can be bool (legacy) or tuple (new format)
-            if isinstance(result, bool):
-                # Legacy boolean result
-                status = AvailabilityStatus.AVAILABLE if result else AvailabilityStatus.UNAVAILABLE
-            elif isinstance(result, tuple) and len(result) >= 2:
-                # New tuple format: (status, latency_ms, error_message)
-                raw_status = result[0]
-                if isinstance(raw_status, AvailabilityStatus):
-                    status = raw_status
-                elif isinstance(raw_status, str):
-                    # Handle string-based status from verification functions
-                    status_map = {
-                        "available": AvailabilityStatus.AVAILABLE,
-                        "unavailable": AvailabilityStatus.UNAVAILABLE,
-                        "rate_limited": AvailabilityStatus.RATE_LIMITED,
-                        "error": AvailabilityStatus.ERROR,
-                    }
-                    status = status_map.get(raw_status.lower(), AvailabilityStatus.UNAVAILABLE)
-                elif isinstance(raw_status, bool):
-                    status = AvailabilityStatus.AVAILABLE if raw_status else AvailabilityStatus.UNAVAILABLE
-                else:
-                    status = AvailabilityStatus.UNAVAILABLE
-                    
-                if len(result) > 2 and result[2]:
-                    error_message = str(result[2])
-            else:
-                status = AvailabilityStatus.UNAVAILABLE
-                
-        except asyncio.TimeoutError:
-            elapsed = time.perf_counter() - start_time
-            latency_ms = int(elapsed * 1000)
-            status = AvailabilityStatus.ERROR
-            error_message = f"Verification timed out after {VERIFICATION_TIMEOUT}s"
-            logger.debug(f"Verification timed out for {model_id}")
-            
-        except Exception as e:
-            elapsed = time.perf_counter() - start_time
-            latency_ms = int(elapsed * 1000)
-            error_str = str(e)
-            
-            # Check for rate limit errors
-            if "429" in error_str or "rate" in error_str.lower() or "quota" in error_str.lower():
-                status = AvailabilityStatus.RATE_LIMITED
-                error_message = "Rate limit exceeded"
-            else:
-                status = AvailabilityStatus.ERROR
-                error_message = error_str[:100]  # Truncate long errors
-            
-            logger.debug(f"Verification crashed for {model_id}: {e}")
-
-    # Create a unique ID
+    # Create a unique ID first (we need it to check cache)
     safe_model = model_id.split("/")[-1].replace(".", "").replace("-", "_").lower()
     if len(safe_model) > 20: 
         safe_model = safe_model[:20]
-    
     pid = f"{ptype}_{pnum}_{safe_model}"
+    
+    # Check if this model was previously verified during actual use
+    if pid in _VERIFIED_MODELS:
+        status = _VERIFIED_MODELS[pid]
+        error_message = None
+        if status == AvailabilityStatus.RATE_LIMITED:
+            error_message = "Rate limit hit during previous use"
+        elif status == AvailabilityStatus.UNAVAILABLE:
+            error_message = "Failed during previous use"
+    else:
+        # Not yet verified - assume it works based on valid API key
+        status = AvailabilityStatus.ASSUMED
+        error_message = None
+    
+    # Use estimated latency instead of measuring via API call
+    latency_ms = ESTIMATED_LATENCY_MS.get(model_id, 1500)  # Default to 1500ms
     
     # Label formatting
     pretty_model = _prettify_label(model_id, model_name)
@@ -341,8 +306,8 @@ async def _verify_candidate(
     label_suffix = f" (Key {pnum})" if is_multikey else ""
     final_label = f"{pretty_model}{label_suffix}"
     
-    # Infer speed from latency (if available) or model name
-    speed = _infer_speed(model_id, latency_ms if status == AvailabilityStatus.AVAILABLE else None)
+    # Infer speed from estimated latency or model name
+    speed = _infer_speed(model_id, latency_ms)
 
     return LLMProvider(
         id=pid,
@@ -355,6 +320,108 @@ async def _verify_candidate(
         speed=speed,
         error_message=error_message
     )
+
+
+async def verify_on_first_use(provider: LLMProvider) -> Tuple[bool, Optional[str]]:
+    """
+    Verify a provider's availability when it's actually selected for use.
+    
+    This is called BEFORE making an analysis request to confirm the model works.
+    Updates the global cache and provider status.
+    
+    Args:
+        provider: The provider to verify
+        
+    Returns:
+        Tuple of (is_available, error_message)
+    """
+    global _VERIFIED_MODELS, _LAST_DISCOVERED
+    
+    # If already verified as AVAILABLE, skip
+    if provider.status == AvailabilityStatus.AVAILABLE:
+        return (True, None)
+    
+    # If already verified as unavailable/rate-limited, return cached result
+    if provider.status in [AvailabilityStatus.UNAVAILABLE, AvailabilityStatus.RATE_LIMITED]:
+        return (False, provider.error_message)
+    
+    logger.info(f"Verifying provider on first use: {provider.id} ({provider.model})")
+    
+    try:
+        # Call provider-specific verify function
+        if provider.provider == "gemini":
+            result = await asyncio.wait_for(
+                verify_gemini(provider.api_key, provider.model),
+                timeout=VERIFICATION_TIMEOUT
+            )
+        elif provider.provider == "openai":
+            result = await asyncio.wait_for(
+                verify_openai(provider.api_key, provider.model),
+                timeout=VERIFICATION_TIMEOUT
+            )
+        elif provider.provider == "anthropic":
+            result = await asyncio.wait_for(
+                verify_anthropic(provider.api_key, provider.model),
+                timeout=VERIFICATION_TIMEOUT
+            )
+        elif provider.provider == "huggingface":
+            result = await asyncio.wait_for(
+                verify_huggingface(provider.api_key, provider.model),
+                timeout=VERIFICATION_TIMEOUT
+            )
+        else:
+            return (False, f"Unknown provider: {provider.provider}")
+        
+        # Handle result - can be bool (legacy) or tuple
+        is_available = False
+        error_message = None
+        
+        if isinstance(result, bool):
+            is_available = result
+        elif isinstance(result, tuple):
+            raw_status = result[0]
+            if isinstance(raw_status, bool):
+                is_available = raw_status
+            elif isinstance(raw_status, AvailabilityStatus):
+                is_available = raw_status == AvailabilityStatus.AVAILABLE
+            elif isinstance(raw_status, str):
+                is_available = raw_status.lower() == "available"
+            
+            if len(result) > 2 and result[2]:
+                error_message = str(result[2])
+        
+        # Update caches
+        new_status = AvailabilityStatus.AVAILABLE if is_available else AvailabilityStatus.UNAVAILABLE
+        _VERIFIED_MODELS[provider.id] = new_status
+        
+        # Update the provider in _LAST_DISCOVERED
+        for p in _LAST_DISCOVERED:
+            if p.id == provider.id:
+                p.status = new_status
+                p.error_message = error_message
+                break
+        
+        logger.info(f"Verification result for {provider.id}: {new_status.value}")
+        return (is_available, error_message)
+        
+    except asyncio.TimeoutError:
+        error_msg = f"Verification timed out after {VERIFICATION_TIMEOUT}s"
+        _VERIFIED_MODELS[provider.id] = AvailabilityStatus.ERROR
+        update_provider_status(provider.id, AvailabilityStatus.ERROR, error_msg)
+        return (False, error_msg)
+        
+    except Exception as e:
+        error_str = str(e)
+        
+        # Check for rate limit errors
+        if "429" in error_str or "rate" in error_str.lower() or "quota" in error_str.lower():
+            _VERIFIED_MODELS[provider.id] = AvailabilityStatus.RATE_LIMITED
+            update_provider_status(provider.id, AvailabilityStatus.RATE_LIMITED, "Rate limit exceeded")
+            return (False, "Rate limit exceeded")
+        
+        _VERIFIED_MODELS[provider.id] = AvailabilityStatus.ERROR
+        update_provider_status(provider.id, AvailabilityStatus.ERROR, error_str[:100])
+        return (False, error_str[:100])
 
 
 async def discover_providers(force_refresh: bool = False) -> List[LLMProvider]:
@@ -416,9 +483,10 @@ async def discover_providers(force_refresh: bool = False) -> List[LLMProvider]:
     
     # Sort: Available first, then by latency (faster first), then by provider name
     def sort_key(p: LLMProvider):
-        # Primary: Available providers come first
+        # Primary: Available and Assumed providers come first
         availability_order = {
             AvailabilityStatus.AVAILABLE: 0,
+            AvailabilityStatus.ASSUMED: 0,  # Treat assumed same as available for sorting
             AvailabilityStatus.RATE_LIMITED: 1,
             AvailabilityStatus.ERROR: 2,
             AvailabilityStatus.UNAVAILABLE: 3,
@@ -434,8 +502,8 @@ async def discover_providers(force_refresh: bool = False) -> List[LLMProvider]:
     all_providers.sort(key=sort_key)
     
     # Log results
-    available_count = sum(1 for p in all_providers if p.is_available)
-    logger.info(f"Discovery complete. Found {available_count} available, {len(all_providers)} total providers:")
+    available_count = sum(1 for p in all_providers if p.status in [AvailabilityStatus.AVAILABLE, AvailabilityStatus.ASSUMED])
+    logger.info(f"Discovery complete. Found {available_count} available/assumed, {len(all_providers)} total providers:")
     for p in all_providers:
         latency_str = f"{p.latency_ms}ms" if p.latency_ms else "N/A"
         logger.info(f" - {p.id}: {p.label} [{p.status.value}] ({latency_str})")
@@ -447,10 +515,10 @@ async def discover_providers(force_refresh: bool = False) -> List[LLMProvider]:
     return all_providers
 
 
-def get_available_providers() -> List[LLMProvider]:
+def get_all_providers() -> List[LLMProvider]:
     """
-    Synchronous accessor for providers. 
-    Returns the last discovered list (filters to only available).
+    Synchronous accessor for ALL providers (regardless of status).
+    Returns the last discovered list including unavailable providers.
     """
     if _LAST_DISCOVERED:
         return _LAST_DISCOVERED
@@ -491,6 +559,16 @@ def get_available_providers() -> List[LLMProvider]:
     return fallback
 
 
+def get_available_providers() -> List[LLMProvider]:
+    """
+    Synchronous accessor for AVAILABLE or ASSUMED providers.
+    Returns providers that are either verified available or assumed available.
+    """
+    all_providers = get_all_providers()
+    # Include both AVAILABLE and ASSUMED (not yet verified but assumed working)
+    return [p for p in all_providers if p.status in [AvailabilityStatus.AVAILABLE, AvailabilityStatus.ASSUMED]]
+
+
 def get_provider_info_list() -> List[LLMProviderInfo]:
     """Public info list (no API keys exposed)."""
     return [
@@ -504,13 +582,13 @@ def get_provider_info_list() -> List[LLMProviderInfo]:
             speed=p.speed,
             error_message=p.error_message
         )
-        for p in get_available_providers()
+        for p in get_all_providers()  # Changed from get_available_providers()
     ]
 
 
 def get_provider_by_id(provider_id: str) -> Optional[LLMProvider]:
     # Check both last discovered and fallback
-    for p in get_available_providers():
+    for p in get_all_providers():  # Changed from get_available_providers()
         if p.id == provider_id: return p
     return None
 

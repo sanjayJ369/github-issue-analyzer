@@ -37,6 +37,8 @@ const getSpeedStyles = (speed, latencyMs) => {
 const getStatusIndicator = (status, isAvailable) => {
     if (isAvailable || status === 'available') {
         return { icon: CheckCircle, color: 'text-emerald-500', tooltip: 'Available' };
+    } else if (status === 'assumed') {
+        return { icon: Clock, color: 'text-amber-500', tooltip: 'Ready (not yet verified)' };
     } else if (status === 'rate_limited') {
         return { icon: AlertTriangle, color: 'text-amber-500', tooltip: 'Rate Limited' };
     } else {
@@ -71,18 +73,18 @@ const ProviderSelect = ({ providers, selectedId, onChange, loading }) => {
     }, [providers, loading]);
     
     // Check if we should hide the dropdown (auto-select mode)
-    // We only hide if there's 1 provider AND it is fully available.
+    // We only hide if there's 1 provider AND it is usable (available or assumed).
     // If the single provider has issues (rate limited/unavailable), we show UI so user knows.
     const isSingleProvider = !loading && providers && providers.length === 1;
-    const isSingleProviderUnavailable = isSingleProvider && providers[0].status !== 'available';
+    const isSingleProviderUsable = isSingleProvider && ['available', 'assumed'].includes(providers[0].status);
     
-    // If single available provider, hide UI (auto-select)
-    if (isSingleProvider && !isSingleProviderUnavailable) {
+    // If single usable provider, hide UI (auto-select)
+    if (isSingleProviderUsable) {
         return null;
     }
 
     // If single UNAVAILABLE provider, show a status banner instead of dropdown
-    if (isSingleProviderUnavailable) {
+    if (isSingleProvider && !isSingleProviderUsable) {
         const provider = providers[0];
         const statusInfo = getStatusIndicator(provider.status, false);
         
@@ -124,10 +126,10 @@ const ProviderSelect = ({ providers, selectedId, onChange, loading }) => {
         );
     }
     
-    // Filter to ONLY providers with status === 'available' for the main dropdown
+    // Filter to providers with status === 'available' OR 'assumed' for the main dropdown
     // Rate-limited providers should be shown as unavailable since they can't be used
-    const availableProviders = providers.filter(p => p.status === 'available');
-    const unavailableProviders = providers.filter(p => p.status !== 'available');
+    const availableProviders = providers.filter(p => ['available', 'assumed'].includes(p.status));
+    const unavailableProviders = providers.filter(p => !['available', 'assumed'].includes(p.status));
     
     return (
         <div className="space-y-2">
