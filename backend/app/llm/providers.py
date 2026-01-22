@@ -114,8 +114,8 @@ PLACEHOLDER_PATTERNS = [
 ]
 
 # Simple in-memory cache for discovered providers
-# Map: cache_key -> (timestamp, List[LLMProvider])
-DISCOVERY_CACHE_TTL = 300
+# Note: On serverless (Vercel), this resets on each cold start
+DISCOVERY_CACHE_TTL = 60  # Reduced from 300 for faster refresh
 _LAST_DISCOVERED: List[LLMProvider] = []
 _LAST_DISCOVERY_TIME: float = 0
 

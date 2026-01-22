@@ -41,15 +41,22 @@ analysis_cache = TTLCache(maxsize=100, ttl=900)
 
 
 @app.get("/llm/providers", response_model=List[LLMProviderResponse])
-async def list_providers():
+async def list_providers(refresh: bool = False):
     """
     List all available LLM providers.
     Performs async discovery of models with latency measurement.
     
+    Query params:
+        refresh: Force refresh provider discovery (bypass cache)
+    
     Returns list of configured providers with their IDs, models, status, and latency.
     """
     # Trigger async discovery
-    providers = await discover_providers()
+    providers = await discover_providers(force_refresh=refresh)
+    
+    # Log discovery results for debugging
+    available_count = sum(1 for p in providers if p.status.value == 'available')
+    logger.info(f"Provider discovery: {available_count} available, {len(providers)} total")
     
     return [
         LLMProviderResponse(
